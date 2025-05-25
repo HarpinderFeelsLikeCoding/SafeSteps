@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Flask + MongoDB Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <h1>🔍 Search</h1>
+    <form method="post" action="{{ url_for('index') }}">
+        <input type="text" name="q" value="{{ query or '' }}" placeholder="Enter search term…">
+        <button type="submit">Go</button>
+    </form>
+
+    {% if query %}
+    <h2>Results for “{{ query }}”</h2>
+    {% if results %}
+    <ul>
+        {% for doc in results %}
+        <li><strong>{{ doc.title }}</strong>: {{ doc.description }}</li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p>No matches found.</p>
+    {% endif %}
+    {% endif %}
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+
+</html>
