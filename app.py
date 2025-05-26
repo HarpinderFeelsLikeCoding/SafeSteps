@@ -21,8 +21,8 @@ try:
 except Exception as e:
     print(e)
 
-db=client.SafeSteps #might be a differen tname
-collection=db.SafeSteps #might be a different name
+db=client.NYC_Crashes #might be a differen tname
+collection=db.NYC_Crash_Data #might be a different name
 
 @app.route("/", methods=["GET", "POST"])
 def index():
