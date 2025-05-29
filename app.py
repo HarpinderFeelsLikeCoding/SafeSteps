@@ -3,6 +3,7 @@ from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from dotenv import load_dotenv
 import os
+from openai import OpenAI
 
 load_dotenv()
 
@@ -21,8 +22,19 @@ try:
 except Exception as e:
     print(e)
 
-db=client.NYC_Crashes #might be a differen tname
-collection=db.NYC_Crash_Data #might be a different name
+db = client.NYC_Crashes 
+collection = db.NYC_Crash_Data 
+
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def get_embedding(text):
+    if not text:
+        return [0.0] * 1536
+    response = openai_client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text
+    )
+    return response.data[0].embedding
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -31,8 +43,21 @@ def index():
 
     if request.method == "POST":
         query = request.form.get("q", "").strip()
-        # simple text search but i need to do this on Mongo DB Atlas too
-        results = list(collection.find({"$text": {"$search": query}}))
+        if query:
+            vector = get_embedding(query)
+
+            results = list(collection.aggregate([
+                {
+                    "$search": {
+                        "knnBeta": {
+                            "vector": vector,
+                            "path": "vector_embedding",
+                            "k": 10
+                        }
+                    }
+                }
+            ]))
+    
     return render_template("index.html", 
                           query=query, 
                           results=results)
