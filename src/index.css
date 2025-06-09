@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import 'leaflet/dist/leaflet.css';
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+}
+
+.route-safe {
+  color: #22c55e !important;
+}
+
+.route-moderate {
+  color: #f59e0b !important;
+}
+
+.route-dangerous {
+  color: #ef4444 !important;
+}
