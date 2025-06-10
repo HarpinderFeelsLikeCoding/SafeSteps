@@ -1,8 +1,7 @@
+@import 'leaflet/dist/leaflet.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-@import 'leaflet/dist/leaflet.css';
 
 body {
   margin: 0;
@@ -62,4 +61,23 @@ body {
   height: 100%;
   width: 100%;
   overflow: hidden;
+}
+
+/* Additional Safari and cross-browser fixes */
+.leaflet-control-container {
+  pointer-events: auto;
+}
+
+.leaflet-popup {
+  pointer-events: auto;
+}
+
+/* Ensure tiles render correctly */
+.leaflet-tile-pane img {
+  max-width: none !important;
+}
+
+/* Fix potential transform issues */
+.leaflet-zoom-anim .leaflet-zoom-animated {
+  will-change: transform;
 }
