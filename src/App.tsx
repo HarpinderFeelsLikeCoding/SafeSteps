@@ -172,16 +172,25 @@ function App() {
           )}
         </div>
 
-        {/* Map */}
-        <div className="flex-1 relative">
+        {/* Map Container with explicit styling */}
+        <div className="flex-1 relative map-container">
           <MapContainer
             center={NYC_CENTER}
             zoom={11}
+            style={{ height: '100%', width: '100%' }}
             className="h-full w-full"
+            whenCreated={(mapInstance) => {
+              // Force map to resize after creation
+              setTimeout(() => {
+                mapInstance.invalidateSize();
+              }, 100);
+            }}
           >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              maxZoom={19}
+              tileSize={256}
             />
 
             {/* Route Lines */}

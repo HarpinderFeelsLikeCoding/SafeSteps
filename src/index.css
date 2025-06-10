@@ -13,15 +13,37 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Fix Leaflet container sizing issues */
 .leaflet-container {
-  height: 100%;
-  width: 100%;
+  height: 100% !important;
+  width: 100% !important;
+  z-index: 1;
 }
 
+/* Ensure map tiles load properly */
+.leaflet-tile-container {
+  pointer-events: auto;
+}
+
+.leaflet-tile {
+  pointer-events: auto;
+}
+
+/* Fix for Safari-specific issues */
+.leaflet-map-pane {
+  z-index: 1;
+}
+
+.leaflet-tile-pane {
+  z-index: 1;
+}
+
+/* Ensure proper popup styling */
 .leaflet-popup-content-wrapper {
   border-radius: 8px;
 }
 
+/* Route color classes */
 .route-safe {
   color: #22c55e !important;
 }
@@ -32,4 +54,12 @@ body {
 
 .route-dangerous {
   color: #ef4444 !important;
+}
+
+/* Fix any potential flexbox issues with the map container */
+.map-container {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
 }
