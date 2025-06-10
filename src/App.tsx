@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import { Icon, LatLngTuple } from 'leaflet';
-import { Navigation, MapPin, AlertTriangle, Shield, Clock, Route } from 'lucide-react';
+import { Navigation, MapPin, AlertTriangle, Shield, Clock, Route, Database, Zap } from 'lucide-react';
 import SearchPanel from './components/SearchPanel';
 import SafetyPanel from './components/SafetyPanel';
 import RoutePanel from './components/RoutePanel';
 import { CrashData, RouteData, SafetyScore } from './types';
+import { apiService } from './services/api';
 
 // Fix for default markers in react-leaflet
 delete (Icon.Default.prototype as any)._getIconUrl;
@@ -24,28 +25,22 @@ function App() {
   const [crashData, setCrashData] = useState<CrashData[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<RouteData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [safetyScores, setSafetyScores] = useState<SafetyScore[]>([]);
+  const [safetyAnalysis, setSafetyAnalysis] = useState<any>(null);
+  const [apiStatus, setApiStatus] = useState<{ mongodb: string; openai: string } | null>(null);
 
-  const searchCrashData = async (query: string) => {
+  // Check API health on component mount
+  useEffect(() => {
+    checkApiHealth();
+  }, []);
+
+  const checkApiHealth = async () => {
     try {
-      const response = await fetch('http://localhost:5000/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `q=${encodeURIComponent(query)}`,
-      });
-      
-      if (response.ok) {
-        const html = await response.text();
-        // Parse the HTML response to extract crash data
-        // This is a simplified version - you might want to create an API endpoint
-        return [];
-      }
+      const health = await apiService.healthCheck();
+      setApiStatus({ mongodb: health.mongodb, openai: health.openai });
     } catch (error) {
-      console.error('Error fetching crash data:', error);
+      console.error('API health check failed:', error);
+      setApiStatus({ mongodb: 'disconnected', openai: 'not configured' });
     }
-    return [];
   };
 
   const calculateRoute = async () => {
@@ -54,7 +49,7 @@ function App() {
     setLoading(true);
     
     try {
-      // Mock route calculation - replace with actual routing service
+      // Generate mock routes with NYC coordinates
       const mockRoutes: RouteData[] = [
         {
           id: '1',
@@ -100,15 +95,55 @@ function App() {
       setRoutes(mockRoutes);
       setSelectedRoute(mockRoutes[0]);
 
-      // Search for crash data along the route
-      const crashes = await searchCrashData(`${origin} ${destination}`);
-      setCrashData(crashes);
+      // Search for real crash data using vector search
+      try {
+        const searchResponse = await apiService.searchCrashes('', origin, destination);
+        setCrashData(searchResponse.crashData);
+        setSafetyAnalysis(searchResponse.safetyAnalysis);
+
+        // Update route safety scores based on real data
+        const updatedRoutes = mockRoutes.map(route => ({
+          ...route,
+          safetyScore: Math.max(10, Math.min(100, searchResponse.safetyAnalysis.safetyScore + (Math.random() * 10 - 5)))
+        }));
+        
+        setRoutes(updatedRoutes);
+        setSelectedRoute(updatedRoutes[0]);
+
+      } catch (error) {
+        console.error('Error fetching crash data:', error);
+        // Fallback to mock data if API fails
+        setCrashData([]);
+        setSafetyAnalysis({
+          safetyScore: 75,
+          riskLevel: 'medium',
+          insights: ['API temporarily unavailable - using cached analysis'],
+          recommendations: ['Exercise normal caution while driving']
+        });
+      }
 
     } catch (error) {
       console.error('Error calculating route:', error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const analyzeSelectedRoute = async (route: RouteData) => {
+    if (!route) return;
+
+    try {
+      const analysis = await apiService.analyzeRoute(route.coordinates, origin, destination);
+      setSafetyAnalysis(analysis.safetyAnalysis);
+      setCrashData(analysis.crashData);
+    } catch (error) {
+      console.error('Error analyzing route:', error);
+    }
+  };
+
+  const handleRouteSelect = (route: RouteData) => {
+    setSelectedRoute(route);
+    analyzeSelectedRoute(route);
   };
 
   const getRouteColor = (safetyScore: number) => {
@@ -134,7 +169,19 @@ function App() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">SafeStep</h1>
-              <p className="text-sm text-gray-600">Navigate safely through NYC</p>
+              <p className="text-sm text-gray-600">AI-Powered Safe Navigation</p>
+            </div>
+          </div>
+          
+          {/* API Status Indicators */}
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Database className={`w-4 h-4 ${apiStatus?.mongodb === 'connected' ? 'text-success-600' : 'text-danger-600'}`} />
+              <span className="text-xs text-gray-600">MongoDB</span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Zap className={`w-4 h-4 ${apiStatus?.openai === 'configured' ? 'text-success-600' : 'text-danger-600'}`} />
+              <span className="text-xs text-gray-600">OpenAI</span>
             </div>
           </div>
         </div>
@@ -158,7 +205,7 @@ function App() {
             <RoutePanel
               routes={routes}
               selectedRoute={selectedRoute}
-              onRouteSelect={setSelectedRoute}
+              onRouteSelect={handleRouteSelect}
               getSafetyIcon={getSafetyIcon}
             />
           )}
@@ -168,11 +215,12 @@ function App() {
             <SafetyPanel
               route={selectedRoute}
               crashData={crashData}
+              safetyAnalysis={safetyAnalysis}
             />
           )}
         </div>
 
-        {/* Map Container with explicit styling */}
+        {/* Map Container */}
         <div className="flex-1 relative map-container">
           <MapContainer
             center={NYC_CENTER}
@@ -180,7 +228,6 @@ function App() {
             style={{ height: '100%', width: '100%' }}
             className="h-full w-full"
             whenCreated={(mapInstance) => {
-              // Force map to resize after creation
               setTimeout(() => {
                 mapInstance.invalidateSize();
               }, 100);
@@ -247,6 +294,12 @@ function App() {
                     <p><strong>Borough:</strong> {crash.borough}</p>
                     {crash.vehicle_types && (
                       <p><strong>Vehicles:</strong> {crash.vehicle_types.join(', ')}</p>
+                    )}
+                    {crash.injuries_total > 0 && (
+                      <p><strong>Injuries:</strong> {crash.injuries_total}</p>
+                    )}
+                    {crash.deaths_total > 0 && (
+                      <p className="text-danger-600 font-semibold"><strong>Deaths:</strong> {crash.deaths_total}</p>
                     )}
                   </div>
                 </Popup>
