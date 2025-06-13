@@ -3,56 +3,73 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { MongoClient } from 'mongodb';
 import OpenAI from 'openai';
+import { Client } from '@googlemaps/google-maps-services-js';
+import * as turf from '@turf/turf';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8080;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
-// MongoDB and OpenAI clients
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../dist')));
+}
+
+// Initialize services
 let db;
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// Connect to MongoDB
+const googleMapsClient = new Client({});
+
+// Connect to MongoDB Atlas
 async function connectToMongoDB() {
   try {
-    const client = new MongoClient(process.env.ATLAS_URI);
+    const client = new MongoClient(process.env.MONGODB_URI);
     await client.connect();
     db = client.db('safestep');
-    console.log('Connected to MongoDB Atlas');
+    console.log('✅ Connected to MongoDB Atlas');
     
-    // Ensure vector search index exists
-    await ensureVectorSearchIndex();
+    await ensureIndexes();
   } catch (error) {
-    console.error('MongoDB connection error:', error);
+    console.error('❌ MongoDB connection error:', error);
     process.exit(1);
   }
 }
 
-// Ensure vector search index exists
-async function ensureVectorSearchIndex() {
+// Ensure proper indexes for geo and vector search
+async function ensureIndexes() {
   try {
-    const collection = db.collection('crash_data');
+    const collection = db.collection('crashes');
     
-    // Check if vector search index exists
+    // Create geospatial index for location queries
+    await collection.createIndex({ location: '2dsphere' });
+    console.log('✅ Geospatial index created');
+    
+    // Create vector search index for semantic similarity
     const indexes = await collection.listSearchIndexes().toArray();
-    const vectorIndex = indexes.find(index => index.name === 'vector_index');
+    const vectorIndex = indexes.find(index => index.name === 'crash_vector_index');
     
     if (!vectorIndex) {
-      console.log('Creating vector search index...');
+      console.log('🔄 Creating vector search index...');
       await collection.createSearchIndex({
-        name: 'vector_index',
+        name: 'crash_vector_index',
         definition: {
           fields: [
             {
               type: 'vector',
-              path: 'location_embedding',
+              path: 'narrative_embedding',
               numDimensions: 1536,
               similarity: 'cosine'
             },
@@ -63,23 +80,27 @@ async function ensureVectorSearchIndex() {
             {
               type: 'filter',
               path: 'crash_date'
+            },
+            {
+              type: 'filter',
+              path: 'vehicle_type_code1'
             }
           ]
         }
       });
-      console.log('Vector search index created');
+      console.log('✅ Vector search index created');
     }
   } catch (error) {
-    console.error('Error setting up vector search index:', error);
+    console.error('⚠️ Error setting up indexes:', error);
   }
 }
 
-// Generate embeddings for location data
-async function generateLocationEmbedding(locationText) {
+// Generate embeddings for crash narratives
+async function generateEmbedding(text) {
   try {
     const response = await openai.embeddings.create({
       model: 'text-embedding-ada-002',
-      input: locationText,
+      input: text.substring(0, 8000), // Limit input length
     });
     return response.data[0].embedding;
   } catch (error) {
@@ -88,16 +109,129 @@ async function generateLocationEmbedding(locationText) {
   }
 }
 
-// Vector search for similar locations
-async function vectorSearchCrashData(queryEmbedding, limit = 50) {
+// Geocode address using Google Cloud Geocoding API
+async function geocodeAddress(address) {
   try {
-    const collection = db.collection('crash_data');
+    const response = await googleMapsClient.geocode({
+      params: {
+        address: address,
+        key: process.env.GOOGLE_CLOUD_API_KEY,
+      },
+    });
+
+    if (response.data.results.length > 0) {
+      const location = response.data.results[0].geometry.location;
+      return {
+        lat: location.lat,
+        lng: location.lng,
+        formatted_address: response.data.results[0].formatted_address
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Geocoding error:', error);
+    return null;
+  }
+}
+
+// Get route directions using Google Cloud Directions API
+async function getRouteDirections(origin, destination, mode = 'driving') {
+  try {
+    const response = await googleMapsClient.directions({
+      params: {
+        origin: `${origin.lat},${origin.lng}`,
+        destination: `${destination.lat},${destination.lng}`,
+        mode: mode,
+        alternatives: true,
+        key: process.env.GOOGLE_CLOUD_API_KEY,
+      },
+    });
+
+    return response.data.routes.map((route, index) => ({
+      id: `route_${index}`,
+      summary: route.summary,
+      distance: route.legs[0].distance,
+      duration: route.legs[0].duration,
+      polyline: route.overview_polyline.points,
+      bounds: route.bounds,
+      legs: route.legs
+    }));
+  } catch (error) {
+    console.error('Directions error:', error);
+    return [];
+  }
+}
+
+// Decode Google polyline to coordinates
+function decodePolyline(encoded) {
+  const poly = [];
+  let index = 0;
+  const len = encoded.length;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < len) {
+    let b;
+    let shift = 0;
+    let result = 0;
+    do {
+      b = encoded.charAt(index++).charCodeAt(0) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlat = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+    lat += dlat;
+
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charAt(index++).charCodeAt(0) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    const dlng = ((result & 1) !== 0 ? ~(result >> 1) : (result >> 1));
+    lng += dlng;
+
+    poly.push([lat / 1e5, lng / 1e5]);
+  }
+  return poly;
+}
+
+// Find crashes near route using geospatial query
+async function findCrashesNearRoute(routeCoordinates, bufferKm = 0.5) {
+  try {
+    const collection = db.collection('crashes');
+    
+    // Create a buffer around the route
+    const lineString = turf.lineString(routeCoordinates.map(coord => [coord[1], coord[0]]));
+    const buffered = turf.buffer(lineString, bufferKm, { units: 'kilometers' });
+    
+    // Query crashes within the buffered area
+    const crashes = await collection.find({
+      location: {
+        $geoWithin: {
+          $geometry: buffered.geometry
+        }
+      }
+    }).limit(100).toArray();
+
+    return crashes;
+  } catch (error) {
+    console.error('Error finding crashes near route:', error);
+    return [];
+  }
+}
+
+// Vector search for similar crash narratives
+async function vectorSearchCrashes(queryEmbedding, limit = 20) {
+  try {
+    const collection = db.collection('crashes');
     
     const pipeline = [
       {
         $vectorSearch: {
-          index: 'vector_index',
-          path: 'location_embedding',
+          index: 'crash_vector_index',
+          path: 'narrative_embedding',
           queryVector: queryEmbedding,
           numCandidates: 100,
           limit: limit
@@ -106,17 +240,18 @@ async function vectorSearchCrashData(queryEmbedding, limit = 50) {
       {
         $project: {
           _id: 1,
+          crash_date: 1,
+          crash_time: 1,
           borough: 1,
           on_street_name: 1,
           cross_street_name: 1,
-          crash_date: 1,
-          crash_time: 1,
           latitude: 1,
           longitude: 1,
-          vehicle_types: 1,
-          contributing_factors: 1,
-          injuries_total: 1,
-          deaths_total: 1,
+          number_of_persons_injured: 1,
+          number_of_persons_killed: 1,
+          vehicle_type_code1: 1,
+          contributing_factor_vehicle_1: 1,
+          crash_narrative: 1,
           score: { $meta: 'vectorSearchScore' }
         }
       }
@@ -130,38 +265,45 @@ async function vectorSearchCrashData(queryEmbedding, limit = 50) {
   }
 }
 
-// Calculate safety score using AI
-async function calculateSafetyScore(crashData, routeInfo) {
+// Calculate safety score using AI analysis
+async function calculateSafetyScore(crashes, routeInfo) {
   try {
-    const prompt = `
-    Analyze the following crash data and route information to calculate a safety score (0-100):
-    
-    Route: ${routeInfo.origin} to ${routeInfo.destination}
-    Distance: ${routeInfo.distance}
-    
-    Crash Data Summary:
-    - Total incidents: ${crashData.length}
-    - Recent incidents (last 30 days): ${crashData.filter(crash => {
+    const recentCrashes = crashes.filter(crash => {
       const crashDate = new Date(crash.crash_date);
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      return crashDate >= thirtyDaysAgo;
-    }).length}
-    - Fatal incidents: ${crashData.filter(crash => crash.deaths_total > 0).length}
-    - Injury incidents: ${crashData.filter(crash => crash.injuries_total > 0).length}
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      return crashDate >= sixMonthsAgo;
+    });
+
+    const fatalCrashes = crashes.filter(crash => crash.number_of_persons_killed > 0);
+    const injuryCrashes = crashes.filter(crash => crash.number_of_persons_injured > 0);
+
+    const prompt = `
+    Analyze this route safety data and provide a comprehensive assessment:
     
-    Consider factors like:
-    - Frequency of accidents
-    - Severity of incidents
-    - Time patterns
-    - Location density
+    Route: ${routeInfo.summary || 'Route analysis'}
+    Distance: ${routeInfo.distance?.text || 'Unknown'}
+    Duration: ${routeInfo.duration?.text || 'Unknown'}
     
-    Respond with only a JSON object containing:
+    Crash Analysis:
+    - Total crashes found: ${crashes.length}
+    - Recent crashes (6 months): ${recentCrashes.length}
+    - Fatal crashes: ${fatalCrashes.length}
+    - Injury crashes: ${injuryCrashes.length}
+    
+    Top contributing factors: ${[...new Set(crashes.map(c => c.contributing_factor_vehicle_1).filter(Boolean))].slice(0, 5).join(', ')}
+    
+    Vehicle types involved: ${[...new Set(crashes.map(c => c.vehicle_type_code1).filter(Boolean))].slice(0, 5).join(', ')}
+    
+    Calculate a safety score (0-100) and provide actionable insights.
+    
+    Respond with JSON only:
     {
-      "safetyScore": number (0-100),
+      "safetyScore": number,
       "riskLevel": "low" | "medium" | "high",
-      "insights": ["insight1", "insight2", ...],
-      "recommendations": ["rec1", "rec2", ...]
+      "insights": ["insight1", "insight2", "insight3"],
+      "recommendations": ["rec1", "rec2", "rec3"],
+      "keyRisks": ["risk1", "risk2"]
     }
     `;
 
@@ -174,185 +316,255 @@ async function calculateSafetyScore(crashData, routeInfo) {
     return JSON.parse(response.choices[0].message.content);
   } catch (error) {
     console.error('Error calculating safety score:', error);
+    
+    // Fallback calculation
+    const baseScore = 85;
+    const crashPenalty = Math.min(crashes.length * 2, 30);
+    const fatalPenalty = crashes.filter(c => c.number_of_persons_killed > 0).length * 10;
+    const finalScore = Math.max(10, baseScore - crashPenalty - fatalPenalty);
+    
     return {
-      safetyScore: 75,
-      riskLevel: 'medium',
-      insights: ['Unable to analyze at this time'],
-      recommendations: ['Exercise normal caution']
+      safetyScore: finalScore,
+      riskLevel: finalScore >= 70 ? 'low' : finalScore >= 50 ? 'medium' : 'high',
+      insights: ['Analysis based on crash frequency and severity'],
+      recommendations: ['Exercise caution in high-traffic areas'],
+      keyRisks: ['Traffic congestion', 'Intersection safety']
     };
   }
 }
 
 // API Routes
 
-// Search crash data by location
-app.post('/api/search-crashes', async (req, res) => {
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
   try {
-    const { query, origin, destination } = req.body;
+    const mongoStatus = db ? 'connected' : 'disconnected';
+    const openaiStatus = process.env.OPENAI_API_KEY ? 'configured' : 'not configured';
+    const googleStatus = process.env.GOOGLE_CLOUD_API_KEY ? 'configured' : 'not configured';
     
-    // Generate embedding for the search query
-    const searchText = `${origin} ${destination} ${query}`.trim();
-    const queryEmbedding = await generateLocationEmbedding(searchText);
-    
-    if (!queryEmbedding) {
-      return res.status(500).json({ error: 'Failed to generate search embedding' });
+    // Test MongoDB connection
+    if (db) {
+      await db.admin().ping();
     }
-
-    // Perform vector search
-    const crashData = await vectorSearchCrashData(queryEmbedding);
     
-    // Calculate safety analysis
-    const safetyAnalysis = await calculateSafetyScore(crashData, {
-      origin,
-      destination,
-      distance: 'calculating...'
-    });
-
     res.json({
-      crashData,
-      safetyAnalysis,
-      totalResults: crashData.length
+      status: 'healthy',
+      services: {
+        mongodb: mongoStatus,
+        openai: openaiStatus,
+        googleCloud: googleStatus
+      },
+      timestamp: new Date().toISOString()
     });
   } catch (error) {
-    console.error('Search error:', error);
-    res.status(500).json({ error: 'Search failed' });
+    res.status(500).json({
+      status: 'unhealthy',
+      error: error.message
+    });
   }
 });
 
-// Add crash data with embeddings
-app.post('/api/add-crash-data', async (req, res) => {
+// Route computation endpoint
+app.post('/api/compute-routes', async (req, res) => {
   try {
-    const crashData = req.body;
+    const { origin, destination, travelMode = 'driving' } = req.body;
     
-    // Generate location embedding
-    const locationText = `${crashData.borough} ${crashData.on_street_name} ${crashData.cross_street_name}`.trim();
-    const embedding = await generateLocationEmbedding(locationText);
-    
-    if (embedding) {
-      crashData.location_embedding = embedding;
+    if (!origin || !destination) {
+      return res.status(400).json({ error: 'Origin and destination are required' });
     }
-    
-    const collection = db.collection('crash_data');
-    const result = await collection.insertOne(crashData);
-    
-    res.json({ success: true, insertedId: result.insertedId });
-  } catch (error) {
-    console.error('Error adding crash data:', error);
-    res.status(500).json({ error: 'Failed to add crash data' });
-  }
-});
 
-// Bulk process existing data to add embeddings
-app.post('/api/process-embeddings', async (req, res) => {
-  try {
-    const collection = db.collection('crash_data');
+    // Geocode addresses
+    const originCoords = await geocodeAddress(origin);
+    const destCoords = await geocodeAddress(destination);
     
-    // Find documents without embeddings
-    const documentsToProcess = await collection.find({
-      location_embedding: { $exists: false }
-    }).limit(100).toArray();
+    if (!originCoords || !destCoords) {
+      return res.status(400).json({ error: 'Could not geocode addresses' });
+    }
+
+    // Get route alternatives
+    const routes = await getRouteDirections(originCoords, destCoords, travelMode);
     
-    console.log(`Processing ${documentsToProcess.length} documents...`);
-    
-    for (const doc of documentsToProcess) {
-      const locationText = `${doc.borough || ''} ${doc.on_street_name || ''} ${doc.cross_street_name || ''}`.trim();
+    if (routes.length === 0) {
+      return res.status(404).json({ error: 'No routes found' });
+    }
+
+    // Process each route
+    const processedRoutes = await Promise.all(routes.map(async (route, index) => {
+      const coordinates = decodePolyline(route.polyline);
       
-      if (locationText) {
-        const embedding = await generateLocationEmbedding(locationText);
-        
-        if (embedding) {
-          await collection.updateOne(
-            { _id: doc._id },
-            { $set: { location_embedding: embedding } }
-          );
-        }
+      // Find crashes near this route
+      const crashes = await findCrashesNearRoute(coordinates);
+      
+      // Calculate safety score
+      const safetyAnalysis = await calculateSafetyScore(crashes, route);
+      
+      return {
+        id: route.id,
+        name: index === 0 ? 'Recommended Route' : `Alternative ${index}`,
+        summary: route.summary,
+        distance: route.distance,
+        duration: route.duration,
+        coordinates: coordinates,
+        polyline: route.polyline,
+        crashes: crashes,
+        safetyScore: safetyAnalysis.safetyScore,
+        safetyAnalysis: safetyAnalysis,
+        type: index === 0 ? 'recommended' : 'alternative'
+      };
+    }));
+
+    // Sort by safety score for route recommendations
+    const sortedRoutes = processedRoutes.sort((a, b) => b.safetyScore - a.safetyScore);
+    
+    res.json({
+      origin: originCoords,
+      destination: destCoords,
+      routes: sortedRoutes,
+      metadata: {
+        totalRoutes: sortedRoutes.length,
+        safestRoute: sortedRoutes[0]?.id,
+        travelMode: travelMode
       }
-      
-      // Small delay to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    res.json({ 
-      success: true, 
-      processed: documentsToProcess.length,
-      message: 'Embeddings processed successfully'
     });
+
   } catch (error) {
-    console.error('Error processing embeddings:', error);
-    res.status(500).json({ error: 'Failed to process embeddings' });
+    console.error('Route computation error:', error);
+    res.status(500).json({ error: 'Failed to compute routes' });
   }
 });
 
-// Get route safety analysis
+// Route analysis endpoint with vector search
 app.post('/api/analyze-route', async (req, res) => {
   try {
-    const { coordinates, origin, destination } = req.body;
+    const { routeId, routeSummary, coordinates } = req.body;
     
-    // Generate embeddings for route points
-    const routeText = `route from ${origin} to ${destination}`;
-    const queryEmbedding = await generateLocationEmbedding(routeText);
-    
-    if (!queryEmbedding) {
-      return res.status(500).json({ error: 'Failed to analyze route' });
+    if (!coordinates || coordinates.length === 0) {
+      return res.status(400).json({ error: 'Route coordinates are required' });
     }
 
-    // Search for crashes near the route
-    const crashData = await vectorSearchCrashData(queryEmbedding, 100);
+    // Generate embedding for route summary
+    const routeNarrative = `Route through ${routeSummary || 'city streets'} with ${coordinates.length} waypoints`;
+    const routeEmbedding = await generateEmbedding(routeNarrative);
     
-    // Filter crashes that are geographically close to the route
-    const routeCrashes = crashData.filter(crash => {
-      if (!crash.latitude || !crash.longitude) return false;
-      
-      // Simple distance check - in a real app, you'd use proper route proximity
-      return coordinates.some(coord => {
-        const distance = Math.sqrt(
-          Math.pow(coord[0] - crash.latitude, 2) + 
-          Math.pow(coord[1] - crash.longitude, 2)
-        );
-        return distance < 0.01; // Roughly 1km
-      });
+    // Find crashes near route (geospatial)
+    const nearbyCrashes = await findCrashesNearRoute(coordinates);
+    
+    // Find similar crashes (vector search)
+    let similarCrashes = [];
+    if (routeEmbedding) {
+      similarCrashes = await vectorSearchCrashes(routeEmbedding);
+    }
+    
+    // Combine and deduplicate crashes
+    const allCrashes = [...nearbyCrashes];
+    const crashIds = new Set(allCrashes.map(c => c._id.toString()));
+    
+    similarCrashes.forEach(crash => {
+      if (!crashIds.has(crash._id.toString())) {
+        allCrashes.push(crash);
+      }
     });
 
-    // Calculate safety score
-    const safetyAnalysis = await calculateSafetyScore(routeCrashes, {
-      origin,
-      destination,
-      distance: `${coordinates.length} points`
+    // Enhanced safety analysis
+    const safetyAnalysis = await calculateSafetyScore(allCrashes, { 
+      summary: routeSummary,
+      distance: { text: `${coordinates.length} waypoints` }
     });
 
     res.json({
-      crashData: routeCrashes,
-      safetyAnalysis,
-      routeAnalysis: {
-        totalCrashes: routeCrashes.length,
-        recentCrashes: routeCrashes.filter(crash => {
-          const crashDate = new Date(crash.crash_date);
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-          return crashDate >= thirtyDaysAgo;
-        }).length
+      routeId,
+      analysis: {
+        totalCrashes: allCrashes.length,
+        nearbyCrashes: nearbyCrashes.length,
+        similarCrashes: similarCrashes.length,
+        safetyScore: safetyAnalysis.safetyScore,
+        riskLevel: safetyAnalysis.riskLevel,
+        insights: safetyAnalysis.insights,
+        recommendations: safetyAnalysis.recommendations,
+        keyRisks: safetyAnalysis.keyRisks
+      },
+      crashes: allCrashes.slice(0, 50), // Limit for performance
+      metadata: {
+        analysisType: 'hybrid_geo_vector',
+        timestamp: new Date().toISOString()
       }
     });
+
   } catch (error) {
     console.error('Route analysis error:', error);
-    res.status(500).json({ error: 'Route analysis failed' });
+    res.status(500).json({ error: 'Failed to analyze route' });
   }
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'healthy', 
-    mongodb: db ? 'connected' : 'disconnected',
-    openai: process.env.OPENAI_API_KEY ? 'configured' : 'not configured'
-  });
+// Bulk data ingestion endpoint (for hackathon setup)
+app.post('/api/ingest-crash-data', async (req, res) => {
+  try {
+    const { crashes } = req.body;
+    
+    if (!Array.isArray(crashes)) {
+      return res.status(400).json({ error: 'Crashes must be an array' });
+    }
+
+    const collection = db.collection('crashes');
+    let processed = 0;
+    let errors = 0;
+
+    for (const crash of crashes.slice(0, 100)) { // Limit for demo
+      try {
+        // Add GeoJSON location field
+        if (crash.latitude && crash.longitude) {
+          crash.location = {
+            type: 'Point',
+            coordinates: [parseFloat(crash.longitude), parseFloat(crash.latitude)]
+          };
+        }
+
+        // Generate narrative embedding
+        const narrative = `${crash.borough || ''} ${crash.on_street_name || ''} ${crash.contributing_factor_vehicle_1 || ''} ${crash.vehicle_type_code1 || ''}`.trim();
+        if (narrative) {
+          const embedding = await generateEmbedding(narrative);
+          if (embedding) {
+            crash.narrative_embedding = embedding;
+            crash.crash_narrative = narrative;
+          }
+        }
+
+        await collection.insertOne(crash);
+        processed++;
+      } catch (error) {
+        console.error('Error processing crash:', error);
+        errors++;
+      }
+    }
+
+    res.json({
+      success: true,
+      processed,
+      errors,
+      message: `Successfully ingested ${processed} crash records with embeddings`
+    });
+
+  } catch (error) {
+    console.error('Data ingestion error:', error);
+    res.status(500).json({ error: 'Failed to ingest crash data' });
+  }
 });
+
+// Serve React app in production
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+  });
+}
 
 // Start server
 connectToMongoDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`Health check: http://localhost:${PORT}/api/health`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 SafeStep server running on port ${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`🗺️ Google Cloud integration: ${process.env.GOOGLE_CLOUD_API_KEY ? '✅' : '❌'}`);
+    console.log(`🧠 OpenAI integration: ${process.env.OPENAI_API_KEY ? '✅' : '❌'}`);
+    console.log(`🍃 MongoDB Atlas: ${process.env.MONGODB_URI ? '✅' : '❌'}`);
   });
 });
 

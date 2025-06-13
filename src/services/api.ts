@@ -1,39 +1,44 @@
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
-export interface CrashSearchResponse {
-  crashData: any[];
-  safetyAnalysis: {
-    safetyScore: number;
-    riskLevel: 'low' | 'medium' | 'high';
-    insights: string[];
-    recommendations: string[];
+export interface RouteComputeResponse {
+  origin: { lat: number; lng: number; formatted_address: string };
+  destination: { lat: number; lng: number; formatted_address: string };
+  routes: any[];
+  metadata: {
+    totalRoutes: number;
+    safestRoute: string;
+    travelMode: string;
   };
-  totalResults: number;
 }
 
 export interface RouteAnalysisResponse {
-  crashData: any[];
-  safetyAnalysis: {
+  routeId: string;
+  analysis: {
+    totalCrashes: number;
+    nearbyCrashes: number;
+    similarCrashes: number;
     safetyScore: number;
-    riskLevel: 'low' | 'medium' | 'high';
+    riskLevel: string;
     insights: string[];
     recommendations: string[];
+    keyRisks: string[];
   };
-  routeAnalysis: {
-    totalCrashes: number;
-    recentCrashes: number;
+  crashes: any[];
+  metadata: {
+    analysisType: string;
+    timestamp: string;
   };
 }
 
 class ApiService {
-  async searchCrashes(query: string, origin: string, destination: string): Promise<CrashSearchResponse> {
+  async computeRoutes(origin: string, destination: string, travelMode: string = 'driving'): Promise<RouteComputeResponse> {
     try {
-      const response = await fetch(`${API_BASE_URL}/search-crashes`, {
+      const response = await fetch(`${API_BASE_URL}/compute-routes`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query, origin, destination }),
+        body: JSON.stringify({ origin, destination, travelMode }),
       });
 
       if (!response.ok) {
@@ -42,23 +47,19 @@ class ApiService {
 
       return await response.json();
     } catch (error) {
-      console.error('Error searching crashes:', error);
+      console.error('Error computing routes:', error);
       throw error;
     }
   }
 
-  async analyzeRoute(
-    coordinates: [number, number][], 
-    origin: string, 
-    destination: string
-  ): Promise<RouteAnalysisResponse> {
+  async analyzeRoute(routeId: string, routeSummary: string, coordinates: [number, number][]): Promise<RouteAnalysisResponse> {
     try {
       const response = await fetch(`${API_BASE_URL}/analyze-route`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ coordinates, origin, destination }),
+        body: JSON.stringify({ routeId, routeSummary, coordinates }),
       });
 
       if (!response.ok) {
@@ -72,14 +73,14 @@ class ApiService {
     }
   }
 
-  async addCrashData(crashData: any): Promise<{ success: boolean; insertedId?: string }> {
+  async ingestCrashData(crashes: any[]): Promise<{ success: boolean; processed: number; errors: number; message: string }> {
     try {
-      const response = await fetch(`${API_BASE_URL}/add-crash-data`, {
+      const response = await fetch(`${API_BASE_URL}/ingest-crash-data`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(crashData),
+        body: JSON.stringify({ crashes }),
       });
 
       if (!response.ok) {
@@ -88,32 +89,12 @@ class ApiService {
 
       return await response.json();
     } catch (error) {
-      console.error('Error adding crash data:', error);
+      console.error('Error ingesting crash data:', error);
       throw error;
     }
   }
 
-  async processEmbeddings(): Promise<{ success: boolean; processed: number; message: string }> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/process-embeddings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('Error processing embeddings:', error);
-      throw error;
-    }
-  }
-
-  async healthCheck(): Promise<{ status: string; mongodb: string; openai: string }> {
+  async healthCheck(): Promise<{ status: string; services: { mongodb: string; openai: string; googleCloud: string }; timestamp: string }> {
     try {
       const response = await fetch(`${API_BASE_URL}/health`);
       

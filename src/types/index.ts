@@ -1,24 +1,52 @@
 export interface CrashData {
   _id?: string;
+  crash_date?: string;
+  crash_time?: string;
   borough?: string;
   on_street_name?: string;
-  crash_date?: string;
-  vehicle_types?: string[];
-  contributing_factors?: string[];
+  cross_street_name?: string;
   latitude?: number;
   longitude?: number;
-  injuries_total?: number;
-  deaths_total?: number;
+  number_of_persons_injured?: number;
+  number_of_persons_killed?: number;
+  vehicle_type_code1?: string;
+  contributing_factor_vehicle_1?: string;
+  crash_narrative?: string;
+  location?: {
+    type: 'Point';
+    coordinates: [number, number];
+  };
+  narrative_embedding?: number[];
 }
 
 export interface RouteData {
   id: string;
   name: string;
+  summary: string;
+  distance: { text: string; value: number };
+  duration: { text: string; value: number };
   coordinates: [number, number][];
-  distance: string;
-  duration: string;
+  polyline: string;
+  crashes?: CrashData[];
   safetyScore: number;
-  type: 'fastest' | 'safest' | 'balanced';
+  safetyAnalysis?: {
+    safetyScore: number;
+    riskLevel: string;
+    insights: string[];
+    recommendations: string[];
+    keyRisks: string[];
+  };
+  detailedAnalysis?: {
+    totalCrashes: number;
+    nearbyCrashes: number;
+    similarCrashes: number;
+    safetyScore: number;
+    riskLevel: string;
+    insights: string[];
+    recommendations: string[];
+    keyRisks: string[];
+  };
+  type: 'recommended' | 'alternative';
 }
 
 export interface SafetyScore {
@@ -31,12 +59,4 @@ export interface SafetyScore {
     weather: number;
   };
   recommendations: string[];
-}
-
-export interface RouteSegment {
-  start: [number, number];
-  end: [number, number];
-  safetyScore: number;
-  crashCount: number;
-  riskFactors: string[];
 }
