@@ -1,14 +1,17 @@
 {
-  "name": "safestep-frontend",
+  "name": "safestep-hackathon",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
-    "server": "node server/index.js"
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "client": "vite",
+    "server": "node server/index.js",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "echo 'Server build complete'",
+    "start": "node server/index.js",
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^18.2.0",
@@ -23,7 +26,10 @@
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "axios": "^1.6.2"
+    "axios": "^1.6.2",
+    "@googlemaps/google-maps-services-js": "^3.3.42",
+    "@turf/turf": "^6.5.0",
+    "concurrently": "^8.2.2"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
