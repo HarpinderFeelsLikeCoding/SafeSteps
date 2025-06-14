@@ -57,38 +57,25 @@ async function ensureIndexes() {
     await collection.createIndex({ location: '2dsphere' });
     console.log('✅ Geospatial index created');
     
-    // Create vector search index for semantic similarity
-    const indexes = await collection.listSearchIndexes().toArray();
-    const vectorIndex = indexes.find(index => index.name === 'crash_vector_index');
-    
-    if (!vectorIndex) {
-      console.log('🔄 Creating vector search index...');
-      await collection.createSearchIndex({
-        name: 'crash_vector_index',
-        definition: {
-          fields: [
-            {
-              type: 'vector',
-              path: 'narrative_embedding',
-              numDimensions: 1536,
-              similarity: 'cosine'
-            },
-            {
-              type: 'filter',
-              path: 'borough'
-            },
-            {
-              type: 'filter',
-              path: 'crash_date'
-            },
-            {
-              type: 'filter',
-              path: 'vehicle_type_code1'
-            }
-          ]
-        }
-      });
-      console.log('✅ Vector search index created');
+    // Check if vector search index exists
+    try {
+      const indexes = await collection.listSearchIndexes().toArray();
+      const vectorIndex = indexes.find(index => index.name === 'crash_vector_index');
+      
+      if (!vectorIndex) {
+        console.log('🔄 Vector search index needs to be created manually in MongoDB Atlas UI');
+        console.log('📋 Please create a vector search index with these settings:');
+        console.log('   - Index Name: crash_vector_index');
+        console.log('   - Field Path: narrative_embedding');
+        console.log('   - Dimensions: 1536');
+        console.log('   - Similarity: cosine');
+        console.log('   - Collection: crashes');
+        console.log('   - Database: safestep');
+      } else {
+        console.log('✅ Vector search index already exists');
+      }
+    } catch (indexError) {
+      console.log('ℹ️ Vector search index will be created manually in Atlas UI');
     }
   } catch (error) {
     console.error('⚠️ Error setting up indexes:', error);
@@ -260,7 +247,7 @@ async function vectorSearchCrashes(queryEmbedding, limit = 20) {
     const results = await collection.aggregate(pipeline).toArray();
     return results;
   } catch (error) {
-    console.error('Vector search error:', error);
+    console.log('ℹ️ Vector search not available yet - using geospatial search only');
     return [];
   }
 }
