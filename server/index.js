@@ -60,22 +60,19 @@ async function ensureIndexes() {
     // Check if vector search index exists
     try {
       const indexes = await collection.listSearchIndexes().toArray();
-      const vectorIndex = indexes.find(index => index.name === 'crash_vector_index');
+      const vectorIndex = indexes.find(index => 
+        index.name === 'default' || 
+        index.mappings?.fields?.vector_embedding ||
+        index.mappings?.fields?.narrative_embedding
+      );
       
-      if (!vectorIndex) {
-        console.log('🔄 Vector search index needs to be created manually in MongoDB Atlas UI');
-        console.log('📋 Please create a vector search index with these settings:');
-        console.log('   - Index Name: crash_vector_index');
-        console.log('   - Field Path: narrative_embedding');
-        console.log('   - Dimensions: 1536');
-        console.log('   - Similarity: cosine');
-        console.log('   - Collection: crashes');
-        console.log('   - Database: safestep');
+      if (vectorIndex) {
+        console.log('✅ Vector search index found and ready');
       } else {
-        console.log('✅ Vector search index already exists');
+        console.log('ℹ️ Vector search index not found - will use geospatial search only');
       }
     } catch (indexError) {
-      console.log('ℹ️ Vector search index will be created manually in Atlas UI');
+      console.log('ℹ️ Vector search index check skipped - will use geospatial search only');
     }
   } catch (error) {
     console.error('⚠️ Error setting up indexes:', error);
@@ -209,7 +206,7 @@ async function findCrashesNearRoute(routeCoordinates, bufferKm = 0.5) {
   }
 }
 
-// Vector search for similar crash narratives
+// Vector search for similar crash narratives - Updated to use your field name
 async function vectorSearchCrashes(queryEmbedding, limit = 20) {
   try {
     const collection = db.collection('crashes');
@@ -217,8 +214,8 @@ async function vectorSearchCrashes(queryEmbedding, limit = 20) {
     const pipeline = [
       {
         $vectorSearch: {
-          index: 'crash_vector_index',
-          path: 'narrative_embedding',
+          index: 'default', // Using default index name
+          path: 'vector_embedding', // Updated to match your index
           queryVector: queryEmbedding,
           numCandidates: 100,
           limit: limit
@@ -248,6 +245,7 @@ async function vectorSearchCrashes(queryEmbedding, limit = 20) {
     return results;
   } catch (error) {
     console.log('ℹ️ Vector search not available yet - using geospatial search only');
+    console.log('Vector search error:', error.message);
     return [];
   }
 }
@@ -483,7 +481,7 @@ app.post('/api/analyze-route', async (req, res) => {
   }
 });
 
-// Bulk data ingestion endpoint (for hackathon setup)
+// Bulk data ingestion endpoint (for hackathon setup) - Updated field name
 app.post('/api/ingest-crash-data', async (req, res) => {
   try {
     const { crashes } = req.body;
@@ -506,12 +504,12 @@ app.post('/api/ingest-crash-data', async (req, res) => {
           };
         }
 
-        // Generate narrative embedding
+        // Generate vector embedding - Updated field name
         const narrative = `${crash.borough || ''} ${crash.on_street_name || ''} ${crash.contributing_factor_vehicle_1 || ''} ${crash.vehicle_type_code1 || ''}`.trim();
         if (narrative) {
           const embedding = await generateEmbedding(narrative);
           if (embedding) {
-            crash.narrative_embedding = embedding;
+            crash.vector_embedding = embedding; // Updated field name to match your index
             crash.crash_narrative = narrative;
           }
         }
