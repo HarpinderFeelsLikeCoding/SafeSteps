@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
-import { Icon, LatLngTuple } from 'leaflet';
-import { Navigation, MapPin, AlertTriangle, Shield, Clock, Route, Database, Zap, Cloud } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import { Icon, LatLngTuple, LatLngBounds } from 'leaflet';
+import { Navigation, MapPin, AlertTriangle, Shield, Clock, Route, Database, Zap, Cloud, X, Menu } from 'lucide-react';
 import SearchPanel from './components/SearchPanel';
 import SafetyPanel from './components/SafetyPanel';
-import RoutePanel from './components/RoutePanel';
+import RoutePopup from './components/RoutePopup';
 import { CrashData, RouteData } from './types';
 import { apiService } from './services/api';
 
@@ -18,6 +18,39 @@ Icon.Default.mergeOptions({
 
 const NYC_CENTER: LatLngTuple = [40.7128, -74.0060];
 
+// Component to handle map centering
+function MapController({ routes, selectedRoute }: { routes: RouteData[], selectedRoute: RouteData | null }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (routes.length > 0) {
+      // Get all coordinates from all routes
+      const allCoords: LatLngTuple[] = [];
+      routes.forEach(route => {
+        if (route.coordinates && route.coordinates.length > 0) {
+          route.coordinates.forEach(coord => {
+            if (coord && coord.length === 2 && !isNaN(coord[0]) && !isNaN(coord[1])) {
+              allCoords.push([coord[0], coord[1]]);
+            }
+          });
+        }
+      });
+
+      if (allCoords.length > 0) {
+        try {
+          const bounds = new LatLngBounds(allCoords);
+          map.fitBounds(bounds, { padding: [50, 50] });
+        } catch (error) {
+          console.log('Error fitting bounds, using first coordinate');
+          map.setView(allCoords[0], 13);
+        }
+      }
+    }
+  }, [routes, map]);
+
+  return null;
+}
+
 function App() {
   const [origin, setOrigin] = useState<string>('Times Square, New York, NY');
   const [destination, setDestination] = useState<string>('Brooklyn Bridge, New York, NY');
@@ -27,11 +60,24 @@ function App() {
   const [travelMode, setTravelMode] = useState<'driving' | 'walking' | 'bicycling'>('driving');
   const [apiStatus, setApiStatus] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  
+  // UI State
+  const [showSearchPanel, setShowSearchPanel] = useState(false);
+  const [showRoutePopup, setShowRoutePopup] = useState(false);
+  const [showSafetyPanel, setShowSafetyPanel] = useState(false);
 
   // Check API health on component mount
   useEffect(() => {
     checkApiHealth();
   }, []);
+
+  // Show route popup when routes are computed
+  useEffect(() => {
+    if (routes.length > 0) {
+      setShowRoutePopup(true);
+      setShowSearchPanel(false);
+    }
+  }, [routes]);
 
   const checkApiHealth = async () => {
     try {
@@ -148,6 +194,8 @@ function App() {
   const handleRouteSelect = (route: RouteData) => {
     console.log('📍 Route selected:', route.id);
     setSelectedRoute(route);
+    setShowRoutePopup(false);
+    setShowSafetyPanel(true);
     analyzeRoute(route);
   };
 
@@ -209,115 +257,183 @@ function App() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+    <div className="h-screen w-screen overflow-hidden bg-gray-50 relative">
+      {/* Full Screen Map */}
+      <div className="absolute inset-0">
+        <MapContainer
+          center={NYC_CENTER}
+          zoom={12}
+          style={{ height: '100%', width: '100%' }}
+          className="h-full w-full"
+          zoomControl={false}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            maxZoom={19}
+          />
+
+          {/* Auto-center map when routes change */}
+          <MapController routes={routes} selectedRoute={selectedRoute} />
+
+          {/* Route Lines */}
+          {routes.map((route) => {
+            if (!route.coordinates || route.coordinates.length === 0) return null;
+            
+            return (
+              <Polyline
+                key={route.id}
+                positions={route.coordinates}
+                color={getRouteColor(route.safetyScore)}
+                weight={selectedRoute?.id === route.id ? 6 : 4}
+                opacity={selectedRoute?.id === route.id ? 1 : 0.6}
+              />
+            );
+          })}
+
+          {/* Crash Markers */}
+          {renderCrashMarkers()}
+        </MapContainer>
+      </div>
+
+      {/* Floating Header */}
+      <div className="absolute top-0 left-0 right-0 z-[1000] bg-white/95 backdrop-blur-sm shadow-lg border-b border-gray-200">
+        <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center space-x-3">
             <div className="bg-primary-500 p-2 rounded-lg">
               <Navigation className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">SafeStep</h1>
-              <p className="text-sm text-gray-600">Google Cloud + MongoDB Atlas Hackathon</p>
+              <h1 className="text-xl font-bold text-gray-900">SafeStep</h1>
+              <p className="text-xs text-gray-600">AI-Powered Route Safety</p>
             </div>
           </div>
           
-          {/* API Status Indicators */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Database className={`w-4 h-4 ${apiStatus?.mongodb === 'connected' ? 'text-success-600' : 'text-danger-600'}`} />
-              <span className="text-xs text-gray-600">MongoDB</span>
+          {/* Action Buttons */}
+          <div className="flex items-center space-x-3">
+            {/* API Status */}
+            <div className="hidden md:flex items-center space-x-3">
+              <div className="flex items-center space-x-1">
+                <Database className={`w-3 h-3 ${apiStatus?.mongodb === 'connected' ? 'text-success-600' : 'text-danger-600'}`} />
+                <span className="text-xs text-gray-600">DB</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <Zap className={`w-3 h-3 ${apiStatus?.openai === 'configured' ? 'text-success-600' : 'text-danger-600'}`} />
+                <span className="text-xs text-gray-600">AI</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <Cloud className={`w-3 h-3 ${apiStatus?.googleCloud === 'configured' ? 'text-success-600' : 'text-danger-600'}`} />
+                <span className="text-xs text-gray-600">Cloud</span>
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Zap className={`w-4 h-4 ${apiStatus?.openai === 'configured' ? 'text-success-600' : 'text-danger-600'}`} />
-              <span className="text-xs text-gray-600">OpenAI</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Cloud className={`w-4 h-4 ${apiStatus?.googleCloud === 'configured' ? 'text-success-600' : 'text-danger-600'}`} />
-              <span className="text-xs text-gray-600">Google Cloud</span>
-            </div>
+
+            {/* Menu Button */}
+            <button
+              onClick={() => setShowSearchPanel(true)}
+              className="bg-primary-600 text-white p-2 rounded-lg hover:bg-primary-700 transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
           </div>
         </div>
         
         {/* Error Banner */}
         {error && (
-          <div className="mt-3 p-3 bg-warning-50 border border-warning-200 rounded-lg">
-            <div className="flex items-center">
-              <AlertTriangle className="w-4 h-4 text-warning-600 mr-2" />
-              <span className="text-sm text-warning-800">{error}</span>
+          <div className="px-6 pb-3">
+            <div className="p-3 bg-warning-50 border border-warning-200 rounded-lg">
+              <div className="flex items-center">
+                <AlertTriangle className="w-4 h-4 text-warning-600 mr-2" />
+                <span className="text-sm text-warning-800">{error}</span>
+              </div>
             </div>
           </div>
         )}
-      </header>
+      </div>
 
-      <div className="flex-1 flex">
-        {/* Left Panel */}
-        <div className="w-96 bg-white shadow-lg border-r border-gray-200 flex flex-col">
-          {/* Search Panel */}
-          <SearchPanel
-            origin={origin}
-            destination={destination}
-            travelMode={travelMode}
-            onOriginChange={setOrigin}
-            onDestinationChange={setDestination}
-            onTravelModeChange={setTravelMode}
-            onSearch={computeRoutes}
-            loading={loading}
-          />
-
-          {/* Routes Panel */}
-          {routes.length > 0 && (
-            <RoutePanel
-              routes={routes}
-              selectedRoute={selectedRoute}
-              onRouteSelect={handleRouteSelect}
-              getSafetyIcon={getSafetyIcon}
-            />
-          )}
-
-          {/* Safety Panel */}
-          {selectedRoute && (
-            <SafetyPanel
-              route={selectedRoute}
-              analysis={selectedRoute.detailedAnalysis}
-            />
-          )}
+      {/* Search Panel Overlay */}
+      {showSearchPanel && (
+        <div className="absolute inset-0 z-[1100] bg-black/50 backdrop-blur-sm">
+          <div className="absolute top-0 left-0 w-full max-w-md h-full bg-white shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Plan Route</h2>
+              <button
+                onClick={() => setShowSearchPanel(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              <SearchPanel
+                origin={origin}
+                destination={destination}
+                travelMode={travelMode}
+                onOriginChange={setOrigin}
+                onDestinationChange={setDestination}
+                onTravelModeChange={setTravelMode}
+                onSearch={computeRoutes}
+                loading={loading}
+              />
+            </div>
+          </div>
         </div>
+      )}
 
-        {/* Map Container */}
-        <div className="flex-1 relative map-container">
-          <MapContainer
-            center={NYC_CENTER}
-            zoom={12}
-            style={{ height: '100%', width: '100%' }}
-            className="h-full w-full"
+      {/* Route Selection Popup */}
+      {showRoutePopup && routes.length > 0 && (
+        <RoutePopup
+          routes={routes}
+          selectedRoute={selectedRoute}
+          onRouteSelect={handleRouteSelect}
+          onClose={() => setShowRoutePopup(false)}
+          getSafetyIcon={getSafetyIcon}
+        />
+      )}
+
+      {/* Safety Panel Overlay */}
+      {showSafetyPanel && selectedRoute && (
+        <div className="absolute inset-0 z-[1100] bg-black/50 backdrop-blur-sm">
+          <div className="absolute top-0 right-0 w-full max-w-md h-full bg-white shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900">Safety Analysis</h2>
+              <button
+                onClick={() => setShowSafetyPanel(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="h-full overflow-y-auto pb-20">
+              <SafetyPanel
+                route={selectedRoute}
+                analysis={selectedRoute.detailedAnalysis}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Action Buttons */}
+      <div className="absolute bottom-6 right-6 z-[1000] flex flex-col space-y-3">
+        {selectedRoute && (
+          <button
+            onClick={() => setShowSafetyPanel(true)}
+            className="bg-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all border border-gray-200"
+            title="View Safety Analysis"
           >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              maxZoom={19}
-            />
-
-            {/* Route Lines */}
-            {routes.map((route) => {
-              if (!route.coordinates || route.coordinates.length === 0) return null;
-              
-              return (
-                <Polyline
-                  key={route.id}
-                  positions={route.coordinates}
-                  color={getRouteColor(route.safetyScore)}
-                  weight={selectedRoute?.id === route.id ? 6 : 4}
-                  opacity={selectedRoute?.id === route.id ? 1 : 0.6}
-                />
-              );
-            })}
-
-            {/* Crash Markers */}
-            {renderCrashMarkers()}
-          </MapContainer>
-        </div>
+            <Shield className="w-6 h-6 text-primary-600" />
+          </button>
+        )}
+        
+        {routes.length > 0 && (
+          <button
+            onClick={() => setShowRoutePopup(true)}
+            className="bg-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all border border-gray-200"
+            title="View Route Options"
+          >
+            <Route className="w-6 h-6 text-primary-600" />
+          </button>
+        )}
       </div>
     </div>
   );
