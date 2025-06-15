@@ -26,6 +26,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [travelMode, setTravelMode] = useState<'driving' | 'walking' | 'bicycling'>('driving');
   const [apiStatus, setApiStatus] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   // Check API health on component mount
   useEffect(() => {
@@ -34,42 +35,103 @@ function App() {
 
   const checkApiHealth = async () => {
     try {
+      console.log('🏥 Checking API health...');
       const health = await apiService.healthCheck();
+      console.log('✅ API health response:', health);
       setApiStatus(health.services);
+      setError(null);
     } catch (error) {
-      console.error('API health check failed:', error);
+      console.error('❌ API health check failed:', error);
       setApiStatus({ mongodb: 'disconnected', openai: 'not configured', googleCloud: 'not configured' });
+      setError('API connection failed - using demo mode');
     }
   };
 
   const computeRoutes = async () => {
-    if (!origin || !destination) return;
+    if (!origin || !destination) {
+      setError('Please enter both origin and destination');
+      return;
+    }
     
+    console.log('🚀 Starting route computation...');
     setLoading(true);
+    setError(null);
     
     try {
+      console.log(`📍 Computing route: ${origin} → ${destination} (${travelMode})`);
       const response = await apiService.computeRoutes(origin, destination, travelMode);
       
-      setRoutes(response.routes);
-      setSelectedRoute(response.routes[0]);
+      console.log('✅ Route computation successful:', response);
+      
+      // Safely process the routes
+      const processedRoutes = (response.routes || []).map((route: any, index: number) => ({
+        id: route.id || `route_${index}`,
+        name: route.name || (index === 0 ? 'Recommended Route' : `Alternative ${index}`),
+        summary: route.summary || 'Route via city streets',
+        distance: route.distance || { text: 'Unknown', value: 0 },
+        duration: route.duration || { text: 'Unknown', value: 0 },
+        coordinates: route.coordinates || [],
+        polyline: route.polyline || '',
+        crashes: route.crashes || [],
+        safetyScore: route.safetyScore || 75,
+        safetyAnalysis: route.safetyAnalysis,
+        type: index === 0 ? 'recommended' : 'alternative'
+      })) as RouteData[];
 
-    } catch (error) {
-      console.error('Error computing routes:', error);
-      // Show error to user
+      console.log('📊 Processed routes:', processedRoutes);
+      
+      setRoutes(processedRoutes);
+      if (processedRoutes.length > 0) {
+        setSelectedRoute(processedRoutes[0]);
+      }
+
+    } catch (error: any) {
+      console.error('❌ Error computing routes:', error);
+      setError(`Failed to compute routes: ${error.message || 'Unknown error'}`);
+      
+      // Set demo routes as fallback
+      const demoRoutes: RouteData[] = [{
+        id: 'demo_route',
+        name: 'Demo Route',
+        summary: 'Demo route via Broadway',
+        distance: { text: '2.1 mi', value: 3380 },
+        duration: { text: '12 mins', value: 720 },
+        coordinates: [
+          [40.7580, -73.9855], // Times Square
+          [40.7505, -73.9934], // Herald Square
+          [40.7282, -73.9942], // Union Square
+          [40.7061, -73.9969]  // Brooklyn Bridge
+        ],
+        polyline: 'demo_polyline',
+        crashes: [],
+        safetyScore: 85,
+        type: 'recommended'
+      }];
+      
+      setRoutes(demoRoutes);
+      setSelectedRoute(demoRoutes[0]);
     } finally {
       setLoading(false);
     }
   };
 
   const analyzeRoute = async (route: RouteData) => {
+    if (!route.coordinates || route.coordinates.length === 0) {
+      console.log('⚠️ No coordinates available for route analysis');
+      return;
+    }
+
     try {
+      console.log('🧠 Starting route analysis for:', route.id);
       const analysis = await apiService.analyzeRoute(route.id, route.summary, route.coordinates);
+      
+      console.log('✅ Route analysis complete:', analysis);
       
       // Update route with detailed analysis
       const updatedRoute = {
         ...route,
         detailedAnalysis: analysis.analysis,
-        crashes: analysis.crashes
+        crashes: analysis.crashes || []
       };
       
       setSelectedRoute(updatedRoute);
@@ -77,12 +139,14 @@ function App() {
       // Update routes array
       setRoutes(prev => prev.map(r => r.id === route.id ? updatedRoute : r));
       
-    } catch (error) {
-      console.error('Error analyzing route:', error);
+    } catch (error: any) {
+      console.error('❌ Error analyzing route:', error);
+      // Don't show error to user for analysis - just use basic route data
     }
   };
 
   const handleRouteSelect = (route: RouteData) => {
+    console.log('📍 Route selected:', route.id);
     setSelectedRoute(route);
     analyzeRoute(route);
   };
@@ -97,6 +161,51 @@ function App() {
     if (score >= 80) return <Shield className="w-4 h-4 text-success-600" />;
     if (score >= 60) return <AlertTriangle className="w-4 h-4 text-warning-600" />;
     return <AlertTriangle className="w-4 h-4 text-danger-600" />;
+  };
+
+  // Safe crash data rendering
+  const renderCrashMarkers = () => {
+    if (!selectedRoute?.crashes) return null;
+    
+    return selectedRoute.crashes.slice(0, 20).map((crash: any, index: number) => {
+      // Handle both field name formats (original and processed)
+      const latitude = crash.LATITUDE || crash.latitude;
+      const longitude = crash.LONGITUDE || crash.longitude;
+      
+      if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
+        return null;
+      }
+
+      return (
+        <Marker
+          key={`crash-${index}`}
+          position={[parseFloat(latitude), parseFloat(longitude)]}
+        >
+          <Popup>
+            <div className="max-w-xs">
+              <div className="flex items-center mb-2">
+                <AlertTriangle className="w-4 h-4 text-danger-600 mr-2" />
+                <strong>Crash Report</strong>
+              </div>
+              <p><strong>Date:</strong> {crash.CRASH_DATE || crash.crash_date || 'Unknown'}</p>
+              <p><strong>Location:</strong> {crash.ON_STREET_NAME || crash.on_street_name || 'Unknown'}</p>
+              <p><strong>Borough:</strong> {crash.BOROUGH || crash.borough || 'Unknown'}</p>
+              {(crash.VEHICLE_TYPE_CODE_1 || crash.vehicle_type_code1) && (
+                <p><strong>Vehicle:</strong> {crash.VEHICLE_TYPE_CODE_1 || crash.vehicle_type_code1}</p>
+              )}
+              {(crash.NUMBER_OF_PERSONS_INJURED || crash.number_of_persons_injured) > 0 && (
+                <p><strong>Injuries:</strong> {crash.NUMBER_OF_PERSONS_INJURED || crash.number_of_persons_injured}</p>
+              )}
+              {(crash.NUMBER_OF_PERSONS_KILLED || crash.number_of_persons_killed) > 0 && (
+                <p className="text-danger-600 font-semibold">
+                  <strong>Fatalities:</strong> {crash.NUMBER_OF_PERSONS_KILLED || crash.number_of_persons_killed}
+                </p>
+              )}
+            </div>
+          </Popup>
+        </Marker>
+      );
+    }).filter(Boolean);
   };
 
   return (
@@ -130,6 +239,16 @@ function App() {
             </div>
           </div>
         </div>
+        
+        {/* Error Banner */}
+        {error && (
+          <div className="mt-3 p-3 bg-warning-50 border border-warning-200 rounded-lg">
+            <div className="flex items-center">
+              <AlertTriangle className="w-4 h-4 text-warning-600 mr-2" />
+              <span className="text-sm text-warning-800">{error}</span>
+            </div>
+          </div>
+        )}
       </header>
 
       <div className="flex-1 flex">
@@ -181,48 +300,22 @@ function App() {
             />
 
             {/* Route Lines */}
-            {routes.map((route) => (
-              <Polyline
-                key={route.id}
-                positions={route.coordinates}
-                color={getRouteColor(route.safetyScore)}
-                weight={selectedRoute?.id === route.id ? 6 : 4}
-                opacity={selectedRoute?.id === route.id ? 1 : 0.6}
-              />
-            ))}
+            {routes.map((route) => {
+              if (!route.coordinates || route.coordinates.length === 0) return null;
+              
+              return (
+                <Polyline
+                  key={route.id}
+                  positions={route.coordinates}
+                  color={getRouteColor(route.safetyScore)}
+                  weight={selectedRoute?.id === route.id ? 6 : 4}
+                  opacity={selectedRoute?.id === route.id ? 1 : 0.6}
+                />
+              );
+            })}
 
             {/* Crash Markers */}
-            {selectedRoute?.crashes?.slice(0, 20).map((crash: any, index: number) => (
-              crash.latitude && crash.longitude && (
-                <Marker
-                  key={`crash-${index}`}
-                  position={[crash.latitude, crash.longitude]}
-                >
-                  <Popup>
-                    <div className="max-w-xs">
-                      <div className="flex items-center mb-2">
-                        <AlertTriangle className="w-4 h-4 text-danger-600 mr-2" />
-                        <strong>Crash Report</strong>
-                      </div>
-                      <p><strong>Date:</strong> {crash.crash_date}</p>
-                      <p><strong>Location:</strong> {crash.on_street_name}</p>
-                      <p><strong>Borough:</strong> {crash.borough}</p>
-                      {crash.vehicle_type_code1 && (
-                        <p><strong>Vehicle:</strong> {crash.vehicle_type_code1}</p>
-                      )}
-                      {crash.number_of_persons_injured > 0 && (
-                        <p><strong>Injuries:</strong> {crash.number_of_persons_injured}</p>
-                      )}
-                      {crash.number_of_persons_killed > 0 && (
-                        <p className="text-danger-600 font-semibold">
-                          <strong>Fatalities:</strong> {crash.number_of_persons_killed}
-                        </p>
-                      )}
-                    </div>
-                  </Popup>
-                </Marker>
-              )
-            ))}
+            {renderCrashMarkers()}
           </MapContainer>
         </div>
       </div>

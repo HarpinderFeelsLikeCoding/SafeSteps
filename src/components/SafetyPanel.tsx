@@ -23,8 +23,13 @@ const SafetyPanel: React.FC<SafetyPanelProps> = ({ route, analysis }) => {
     return { level: 'Caution', color: 'text-danger-600', bg: 'bg-danger-50' };
   };
 
-  const safetyScore = analysis?.safetyScore || route.safetyScore;
+  const safetyScore = analysis?.safetyScore || route.safetyScore || 75;
   const safety = getSafetyLevel(safetyScore);
+
+  // Safe array rendering with fallbacks
+  const safeInsights = Array.isArray(analysis?.insights) ? analysis.insights : [];
+  const safeRecommendations = Array.isArray(analysis?.recommendations) ? analysis.recommendations : [];
+  const safeKeyRisks = Array.isArray(analysis?.keyRisks) ? analysis.keyRisks : [];
 
   return (
     <div className="flex-1 p-6 overflow-y-auto">
@@ -40,15 +45,15 @@ const SafetyPanel: React.FC<SafetyPanelProps> = ({ route, analysis }) => {
           <MapPin className="w-4 h-4 mr-2" />
           Route Summary
         </h4>
-        <p className="text-sm text-gray-600 mb-2">{route.summary}</p>
+        <p className="text-sm text-gray-600 mb-2">{route.summary || 'Route analysis'}</p>
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
             <span className="text-gray-500">Distance:</span>
-            <p className="font-medium">{route.distance?.text}</p>
+            <p className="font-medium">{route.distance?.text || 'Unknown'}</p>
           </div>
           <div>
             <span className="text-gray-500">Duration:</span>
-            <p className="font-medium">{route.duration?.text}</p>
+            <p className="font-medium">{route.duration?.text || 'Unknown'}</p>
           </div>
         </div>
       </div>
@@ -67,31 +72,31 @@ const SafetyPanel: React.FC<SafetyPanelProps> = ({ route, analysis }) => {
               safetyScore >= 80 ? 'bg-success-500' :
               safetyScore >= 60 ? 'bg-warning-500' : 'bg-danger-500'
             }`}
-            style={{ width: `${safetyScore}%` }}
+            style={{ width: `${Math.min(100, Math.max(0, safetyScore))}%` }}
           ></div>
         </div>
         <p className={`text-sm mt-2 ${safety.color} font-medium`}>
           {safety.level} Safety Level
           {analysis && (
             <span className="ml-2 text-xs text-gray-500">
-              (Risk: {analysis.riskLevel})
+              (Risk: {analysis.riskLevel || 'unknown'})
             </span>
           )}
         </p>
       </div>
 
       {/* AI Insights */}
-      {analysis?.insights && (
+      {safeInsights.length > 0 && (
         <div className="mb-6">
           <h4 className="text-md font-semibold text-gray-800 mb-3 flex items-center">
             <TrendingUp className="w-4 h-4 mr-2 text-success-600" />
             AI Safety Insights
           </h4>
           <ul className="space-y-2">
-            {analysis.insights.map((insight, index) => (
+            {safeInsights.slice(0, 5).map((insight, index) => (
               <li key={index} className="flex items-start text-sm text-gray-600">
                 <div className="w-2 h-2 bg-success-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                {insight}
+                {typeof insight === 'string' ? insight : 'Analysis insight available'}
               </li>
             ))}
           </ul>
@@ -99,17 +104,17 @@ const SafetyPanel: React.FC<SafetyPanelProps> = ({ route, analysis }) => {
       )}
 
       {/* AI Recommendations */}
-      {analysis?.recommendations && (
+      {safeRecommendations.length > 0 && (
         <div className="mb-6">
           <h4 className="text-md font-semibold text-gray-800 mb-3 flex items-center">
             <AlertTriangle className="w-4 h-4 mr-2 text-warning-600" />
             AI Recommendations
           </h4>
           <ul className="space-y-2">
-            {analysis.recommendations.map((recommendation, index) => (
+            {safeRecommendations.slice(0, 5).map((recommendation, index) => (
               <li key={index} className="flex items-start text-sm text-gray-600">
                 <div className="w-2 h-2 bg-warning-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                {recommendation}
+                {typeof recommendation === 'string' ? recommendation : 'Safety recommendation available'}
               </li>
             ))}
           </ul>
@@ -117,17 +122,17 @@ const SafetyPanel: React.FC<SafetyPanelProps> = ({ route, analysis }) => {
       )}
 
       {/* Key Risks */}
-      {analysis?.keyRisks && (
+      {safeKeyRisks.length > 0 && (
         <div className="mb-6">
           <h4 className="text-md font-semibold text-gray-800 mb-3 flex items-center">
             <AlertTriangle className="w-4 h-4 mr-2 text-danger-600" />
             Key Risk Factors
           </h4>
           <ul className="space-y-2">
-            {analysis.keyRisks.map((risk, index) => (
+            {safeKeyRisks.slice(0, 5).map((risk, index) => (
               <li key={index} className="flex items-start text-sm text-gray-600">
                 <div className="w-2 h-2 bg-danger-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                {risk}
+                {typeof risk === 'string' ? risk : 'Risk factor identified'}
               </li>
             ))}
           </ul>
