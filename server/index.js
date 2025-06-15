@@ -33,13 +33,17 @@ const openai = new OpenAI({
 
 const googleMapsClient = new Client({});
 
-// Connect to MongoDB Atlas
+// Connect to MongoDB Atlas - Updated for your database structure
 async function connectToMongoDB() {
   try {
     const client = new MongoClient(process.env.MONGODB_URI);
     await client.connect();
-    db = client.db('safestep');
+    
+    // Use your actual database name from the screenshot
+    db = client.db(process.env.DB_NAME || 'NYC_Crashes');
     console.log('✅ Connected to MongoDB Atlas');
+    console.log(`📊 Database: ${process.env.DB_NAME || 'NYC_Crashes'}`);
+    console.log(`📋 Collection: ${process.env.COLL_NAME || 'NYC_Crash_Data'}`);
     
     await ensureIndexes();
   } catch (error) {
@@ -51,11 +55,16 @@ async function connectToMongoDB() {
 // Ensure proper indexes for geo and vector search
 async function ensureIndexes() {
   try {
-    const collection = db.collection('crashes');
+    // Use your actual collection name from the screenshot
+    const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
     
     // Create geospatial index for location queries
-    await collection.createIndex({ location: '2dsphere' });
-    console.log('✅ Geospatial index created');
+    try {
+      await collection.createIndex({ location: '2dsphere' });
+      console.log('✅ Geospatial index created');
+    } catch (indexError) {
+      console.log('ℹ️ Geospatial index already exists or location field not ready');
+    }
     
     // Check if vector search index exists
     try {
@@ -69,7 +78,21 @@ async function ensureIndexes() {
       if (vectorIndex) {
         console.log('✅ Vector search index found and ready');
       } else {
-        console.log('ℹ️ Vector search index not found - will use geospatial search only');
+        console.log('⚠️ Vector search index not found');
+        console.log('📝 You need to create a vector search index in MongoDB Atlas:');
+        console.log('   1. Go to Atlas Search in your cluster');
+        console.log('   2. Create Search Index');
+        console.log('   3. Use JSON Editor with this config:');
+        console.log(JSON.stringify({
+          "fields": [
+            {
+              "type": "vector",
+              "path": "vector_embedding",
+              "numDimensions": 1536,
+              "similarity": "cosine"
+            }
+          ]
+        }, null, 2));
       }
     } catch (indexError) {
       console.log('ℹ️ Vector search index check skipped - will use geospatial search only');
@@ -84,7 +107,7 @@ async function generateEmbedding(text) {
   try {
     const response = await openai.embeddings.create({
       model: 'text-embedding-ada-002',
-      input: text.substring(0, 8000), // Limit input length
+      input: text.substring(0, 8000),
     });
     return response.data[0].embedding;
   } catch (error) {
@@ -181,10 +204,10 @@ function decodePolyline(encoded) {
   return poly;
 }
 
-// Find crashes near route using geospatial query
+// Find crashes near route using geospatial query - Updated for your field names
 async function findCrashesNearRoute(routeCoordinates, bufferKm = 0.5) {
   try {
-    const collection = db.collection('crashes');
+    const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
     
     // Create a buffer around the route
     const lineString = turf.lineString(routeCoordinates.map(coord => [coord[1], coord[0]]));
@@ -206,16 +229,16 @@ async function findCrashesNearRoute(routeCoordinates, bufferKm = 0.5) {
   }
 }
 
-// Vector search for similar crash narratives - Updated to use your field name
+// Vector search for similar crash narratives - Updated for your collection
 async function vectorSearchCrashes(queryEmbedding, limit = 20) {
   try {
-    const collection = db.collection('crashes');
+    const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
     
     const pipeline = [
       {
         $vectorSearch: {
-          index: 'default', // Using default index name
-          path: 'vector_embedding', // Updated to match your index
+          index: 'default',
+          path: 'vector_embedding',
           queryVector: queryEmbedding,
           numCandidates: 100,
           limit: limit
@@ -224,17 +247,17 @@ async function vectorSearchCrashes(queryEmbedding, limit = 20) {
       {
         $project: {
           _id: 1,
-          crash_date: 1,
-          crash_time: 1,
-          borough: 1,
-          on_street_name: 1,
-          cross_street_name: 1,
-          latitude: 1,
-          longitude: 1,
-          number_of_persons_injured: 1,
-          number_of_persons_killed: 1,
-          vehicle_type_code1: 1,
-          contributing_factor_vehicle_1: 1,
+          CRASH_DATE: 1,
+          CRASH_TIME: 1,
+          BOROUGH: 1,
+          ON_STREET_NAME: 1,
+          CROSS_STREET_NAME: 1,
+          LATITUDE: 1,
+          LONGITUDE: 1,
+          NUMBER_OF_PERSONS_INJURED: 1,
+          NUMBER_OF_PERSONS_KILLED: 1,
+          VEHICLE_TYPE_CODE_1: 1,
+          CONTRIBUTING_FACTOR_VEHICLE_1: 1,
           crash_narrative: 1,
           score: { $meta: 'vectorSearchScore' }
         }
@@ -250,18 +273,22 @@ async function vectorSearchCrashes(queryEmbedding, limit = 20) {
   }
 }
 
-// Calculate safety score using AI analysis
+// Calculate safety score using AI analysis - Updated for your field names
 async function calculateSafetyScore(crashes, routeInfo) {
   try {
     const recentCrashes = crashes.filter(crash => {
-      const crashDate = new Date(crash.crash_date);
+      const crashDate = new Date(crash.CRASH_DATE || crash.crash_date);
       const sixMonthsAgo = new Date();
       sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
       return crashDate >= sixMonthsAgo;
     });
 
-    const fatalCrashes = crashes.filter(crash => crash.number_of_persons_killed > 0);
-    const injuryCrashes = crashes.filter(crash => crash.number_of_persons_injured > 0);
+    const fatalCrashes = crashes.filter(crash => 
+      (crash.NUMBER_OF_PERSONS_KILLED || crash.number_of_persons_killed || 0) > 0
+    );
+    const injuryCrashes = crashes.filter(crash => 
+      (crash.NUMBER_OF_PERSONS_INJURED || crash.number_of_persons_injured || 0) > 0
+    );
 
     const prompt = `
     Analyze this route safety data and provide a comprehensive assessment:
@@ -276,9 +303,13 @@ async function calculateSafetyScore(crashes, routeInfo) {
     - Fatal crashes: ${fatalCrashes.length}
     - Injury crashes: ${injuryCrashes.length}
     
-    Top contributing factors: ${[...new Set(crashes.map(c => c.contributing_factor_vehicle_1).filter(Boolean))].slice(0, 5).join(', ')}
+    Top contributing factors: ${[...new Set(crashes.map(c => 
+      c.CONTRIBUTING_FACTOR_VEHICLE_1 || c.contributing_factor_vehicle_1
+    ).filter(Boolean))].slice(0, 5).join(', ')}
     
-    Vehicle types involved: ${[...new Set(crashes.map(c => c.vehicle_type_code1).filter(Boolean))].slice(0, 5).join(', ')}
+    Vehicle types involved: ${[...new Set(crashes.map(c => 
+      c.VEHICLE_TYPE_CODE_1 || c.vehicle_type_code1
+    ).filter(Boolean))].slice(0, 5).join(', ')}
     
     Calculate a safety score (0-100) and provide actionable insights.
     
@@ -305,7 +336,9 @@ async function calculateSafetyScore(crashes, routeInfo) {
     // Fallback calculation
     const baseScore = 85;
     const crashPenalty = Math.min(crashes.length * 2, 30);
-    const fatalPenalty = crashes.filter(c => c.number_of_persons_killed > 0).length * 10;
+    const fatalPenalty = crashes.filter(c => 
+      (c.NUMBER_OF_PERSONS_KILLED || c.number_of_persons_killed || 0) > 0
+    ).length * 10;
     const finalScore = Math.max(10, baseScore - crashPenalty - fatalPenalty);
     
     return {
@@ -320,16 +353,23 @@ async function calculateSafetyScore(crashes, routeInfo) {
 
 // API Routes
 
-// Health check endpoint
+// Health check endpoint - Updated to check your collection
 app.get('/api/health', async (req, res) => {
   try {
     const mongoStatus = db ? 'connected' : 'disconnected';
     const openaiStatus = process.env.OPENAI_API_KEY ? 'configured' : 'not configured';
     const googleStatus = process.env.GOOGLE_CLOUD_API_KEY ? 'configured' : 'not configured';
     
-    // Test MongoDB connection
+    // Test MongoDB connection and check data
+    let dataStatus = 'no data';
     if (db) {
       await db.admin().ping();
+      const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
+      const totalDocs = await collection.countDocuments();
+      const processedDocs = await collection.countDocuments({ 
+        vector_embedding: { $exists: true } 
+      });
+      dataStatus = `${totalDocs} total, ${processedDocs} with embeddings`;
     }
     
     res.json({
@@ -339,6 +379,9 @@ app.get('/api/health', async (req, res) => {
         openai: openaiStatus,
         googleCloud: googleStatus
       },
+      data: dataStatus,
+      database: process.env.DB_NAME || 'NYC_Crashes',
+      collection: process.env.COLL_NAME || 'NYC_Crash_Data',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -478,60 +521,6 @@ app.post('/api/analyze-route', async (req, res) => {
   } catch (error) {
     console.error('Route analysis error:', error);
     res.status(500).json({ error: 'Failed to analyze route' });
-  }
-});
-
-// Bulk data ingestion endpoint (for hackathon setup) - Updated field name
-app.post('/api/ingest-crash-data', async (req, res) => {
-  try {
-    const { crashes } = req.body;
-    
-    if (!Array.isArray(crashes)) {
-      return res.status(400).json({ error: 'Crashes must be an array' });
-    }
-
-    const collection = db.collection('crashes');
-    let processed = 0;
-    let errors = 0;
-
-    for (const crash of crashes.slice(0, 100)) { // Limit for demo
-      try {
-        // Add GeoJSON location field
-        if (crash.latitude && crash.longitude) {
-          crash.location = {
-            type: 'Point',
-            coordinates: [parseFloat(crash.longitude), parseFloat(crash.latitude)]
-          };
-        }
-
-        // Generate vector embedding - Updated field name
-        const narrative = `${crash.borough || ''} ${crash.on_street_name || ''} ${crash.contributing_factor_vehicle_1 || ''} ${crash.vehicle_type_code1 || ''}`.trim();
-        if (narrative) {
-          const embedding = await generateEmbedding(narrative);
-          if (embedding) {
-            crash.vector_embedding = embedding; // Updated field name to match your index
-            crash.crash_narrative = narrative;
-          }
-        }
-
-        await collection.insertOne(crash);
-        processed++;
-      } catch (error) {
-        console.error('Error processing crash:', error);
-        errors++;
-      }
-    }
-
-    res.json({
-      success: true,
-      processed,
-      errors,
-      message: `Successfully ingested ${processed} crash records with embeddings`
-    });
-
-  } catch (error) {
-    console.error('Data ingestion error:', error);
-    res.status(500).json({ error: 'Failed to ingest crash data' });
   }
 });
 
