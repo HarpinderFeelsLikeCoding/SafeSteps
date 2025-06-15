@@ -11,7 +11,10 @@
     "build:client": "vite build",
     "build:server": "echo 'Server build complete'",
     "start": "node server/index.js",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "process-data": "node process-existing-data.js",
+    "check-data": "node check-data.js",
+    "ingest-sample": "node ingest-sample.js"
   },
   "dependencies": {
     "react": "^18.2.0",
