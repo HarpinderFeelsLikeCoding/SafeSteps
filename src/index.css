@@ -57,46 +57,6 @@ html, body {
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-/* Route color classes */
-.route-safe {
-  color: #22c55e !important;
-}
-
-.route-moderate {
-  color: #f59e0b !important;
-}
-
-.route-dangerous {
-  color: #ef4444 !important;
-}
-
-/* Fix any potential flexbox issues with the map container */
-.map-container {
-  position: relative;
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-}
-
-/* Additional Safari and cross-browser fixes */
-.leaflet-control-container {
-  pointer-events: auto;
-}
-
-.leaflet-popup {
-  pointer-events: auto;
-}
-
-/* Ensure tiles render correctly */
-.leaflet-tile-pane img {
-  max-width: none !important;
-}
-
-/* Fix potential transform issues */
-.leaflet-zoom-anim .leaflet-zoom-animated {
-  will-change: transform;
-}
-
 /* Custom scrollbar for overlays */
 .overlay-scroll::-webkit-scrollbar {
   width: 6px;
@@ -116,7 +76,7 @@ html, body {
   background: #a8a8a8;
 }
 
-/* Smooth animations for popups */
+/* Smooth animations for overlays */
 @keyframes slideInUp {
   from {
     opacity: 0;
@@ -168,9 +128,80 @@ html, body {
   -webkit-backdrop-filter: blur(4px);
 }
 
+/* Glass morphism effect for overlays */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
 /* Ensure proper z-index layering */
 .z-map { z-index: 1; }
 .z-ui { z-index: 1000; }
 .z-overlay { z-index: 1100; }
 .z-popup { z-index: 1200; }
 .z-modal { z-index: 1300; }
+
+/* Floating panel animations */
+.floating-panel {
+  animation: slideInUp 0.3s ease-out;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Hover effects for interactive elements */
+.hover-lift {
+  transition: all 0.2s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Route line animations */
+@keyframes drawRoute {
+  from {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dasharray: 1000;
+    stroke-dashoffset: 0;
+  }
+}
+
+.route-line {
+  animation: drawRoute 2s ease-in-out;
+}
+
+/* Pulse animation for safety indicators */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse-animation {
+  animation: pulse 2s infinite;
+}
+
+/* Gradient backgrounds */
+.gradient-primary {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+}
+
+.gradient-success {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+}
+
+.gradient-warning {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+}
+
+.gradient-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+}
