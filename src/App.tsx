@@ -395,36 +395,6 @@ function App() {
         )}
       </div>
 
-      {/* Travel Mode Switcher - Shows after routes are computed */}
-      {routes.length > 0 && (
-        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 z-[1000] bg-white/95 backdrop-blur-sm shadow-xl rounded-2xl border border-gray-200 p-2">
-          <div className="flex items-center space-x-1">
-            {travelModes.map((mode) => {
-              const IconComponent = mode.icon;
-              return (
-                <button
-                  key={mode.id}
-                  onClick={() => handleTravelModeChange(mode.id as any)}
-                  disabled={loading}
-                  className={`p-3 rounded-xl transition-all flex flex-col items-center space-y-1 min-w-[80px] ${
-                    travelMode === mode.id
-                      ? 'bg-primary-500 text-white shadow-lg scale-105'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-                  } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                >
-                  {loading && travelMode === mode.id ? (
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <IconComponent className="w-5 h-5" />
-                  )}
-                  <span className="text-xs font-medium">{mode.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
       {/* Search Panel Overlay */}
       {showSearchPanel && (
         <div className="absolute inset-0 z-[1100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
@@ -587,6 +557,36 @@ function App() {
                 </div>
               );
             })}
+          </div>
+
+          {/* Travel Mode Switcher - Now positioned under route options */}
+          <div className="border-t border-gray-200 p-4 bg-gray-50/50 rounded-b-2xl">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-700">Switch Travel Mode</span>
+              {loading && (
+                <RefreshCw className="w-4 h-4 animate-spin text-primary-600" />
+              )}
+            </div>
+            <div className="flex items-center space-x-2">
+              {travelModes.map((mode) => {
+                const IconComponent = mode.icon;
+                return (
+                  <button
+                    key={mode.id}
+                    onClick={() => handleTravelModeChange(mode.id as any)}
+                    disabled={loading}
+                    className={`flex-1 p-3 rounded-xl transition-all flex flex-col items-center space-y-1 ${
+                      travelMode === mode.id
+                        ? 'bg-primary-500 text-white shadow-lg'
+                        : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
+                    } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
+                  >
+                    <IconComponent className="w-4 h-4" />
+                    <span className="text-xs font-medium">{mode.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
