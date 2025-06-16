@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, AlertTriangle, TrendingUp, Brain, Database, Cloud, MapPin } from 'lucide-react';
+import { Shield, AlertTriangle, TrendingUp, Brain, Database, Cloud, MapPin, Star, Award, Target } from 'lucide-react';
 import { RouteData } from '../types';
 
 interface SafetyPanelProps {
@@ -18,9 +18,10 @@ interface SafetyPanelProps {
 
 const SafetyPanel: React.FC<SafetyPanelProps> = ({ route, analysis }) => {
   const getSafetyLevel = (score: number) => {
-    if (score >= 80) return { level: 'Excellent', color: 'text-success-600', bg: 'bg-success-50' };
-    if (score >= 60) return { level: 'Good', color: 'text-warning-600', bg: 'bg-warning-50' };
-    return { level: 'Caution', color: 'text-danger-600', bg: 'bg-danger-50' };
+    if (score >= 90) return { level: 'Excellent', color: 'text-emerald-700', bg: 'bg-emerald-50', ring: 'ring-emerald-200' };
+    if (score >= 80) return { level: 'Very Good', color: 'text-emerald-600', bg: 'bg-emerald-50', ring: 'ring-emerald-200' };
+    if (score >= 60) return { level: 'Good', color: 'text-amber-600', bg: 'bg-amber-50', ring: 'ring-amber-200' };
+    return { level: 'Caution', color: 'text-red-600', bg: 'bg-red-50', ring: 'ring-red-200' };
   };
 
   const safetyScore = analysis?.safetyScore || route.safetyScore || 75;
@@ -32,142 +33,160 @@ const SafetyPanel: React.FC<SafetyPanelProps> = ({ route, analysis }) => {
   const safeKeyRisks = Array.isArray(analysis?.keyRisks) ? analysis.keyRisks : [];
 
   return (
-    <div className="flex-1 p-6 overflow-y-auto">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-        <Shield className="w-5 h-5 mr-2" />
-        AI Safety Analysis
-        <Brain className="w-4 h-4 ml-2 text-primary-600" title="Powered by OpenAI + Google Cloud" />
-      </h3>
-
-      {/* Route Summary */}
-      <div className="bg-gray-50 p-4 rounded-lg mb-4">
-        <h4 className="font-medium text-gray-800 mb-2 flex items-center">
-          <MapPin className="w-4 h-4 mr-2" />
-          Route Summary
+    <div className="p-6 space-y-6">
+      {/* Route Summary Card */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-2xl border border-blue-100">
+        <h4 className="font-bold text-gray-900 mb-3 flex items-center text-lg">
+          <MapPin className="w-5 h-5 mr-3 text-blue-600" />
+          Route Overview
         </h4>
-        <p className="text-sm text-gray-600 mb-2">{route.summary || 'Route analysis'}</p>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-gray-500">Distance:</span>
-            <p className="font-medium">{route.distance?.text || 'Unknown'}</p>
+        <p className="text-gray-700 mb-4 font-medium">{route.summary || 'Route analysis'}</p>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-white/70 p-3 rounded-xl">
+            <span className="text-gray-600 text-sm font-medium">Distance</span>
+            <p className="font-bold text-gray-900 text-lg">{route.distance?.text || 'Unknown'}</p>
           </div>
-          <div>
-            <span className="text-gray-500">Duration:</span>
-            <p className="font-medium">{route.duration?.text || 'Unknown'}</p>
+          <div className="bg-white/70 p-3 rounded-xl">
+            <span className="text-gray-600 text-sm font-medium">Duration</span>
+            <p className="font-bold text-gray-900 text-lg">{route.duration?.text || 'Unknown'}</p>
           </div>
         </div>
       </div>
 
-      {/* Safety Score */}
-      <div className={`p-4 rounded-lg mb-6 ${safety.bg}`}>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700">Safety Score</span>
-          <span className={`text-2xl font-bold ${safety.color}`}>
+      {/* Safety Score Card */}
+      <div className={`p-6 rounded-2xl border-2 ${safety.bg} ${safety.ring} ring-2`}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <div className="bg-white p-3 rounded-2xl shadow-sm">
+              <Shield className={`w-6 h-6 ${safety.color}`} />
+            </div>
+            <div>
+              <span className="text-sm font-semibold text-gray-700">Safety Score</span>
+              <p className={`text-sm ${safety.color} font-bold`}>{safety.level}</p>
+            </div>
+          </div>
+          <div className={`text-4xl font-black ${safety.color}`}>
             {Math.round(safetyScore)}%
-          </span>
+          </div>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-2">
+        
+        <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
           <div
-            className={`h-2 rounded-full transition-all duration-500 ${
-              safetyScore >= 80 ? 'bg-success-500' :
-              safetyScore >= 60 ? 'bg-warning-500' : 'bg-danger-500'
+            className={`h-3 rounded-full transition-all duration-1000 ${
+              safetyScore >= 80 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' :
+              safetyScore >= 60 ? 'bg-gradient-to-r from-amber-400 to-amber-500' : 
+              'bg-gradient-to-r from-red-400 to-red-500'
             }`}
             style={{ width: `${Math.min(100, Math.max(0, safetyScore))}%` }}
           ></div>
         </div>
-        <p className={`text-sm mt-2 ${safety.color} font-medium`}>
-          {safety.level} Safety Level
-          {analysis && (
-            <span className="ml-2 text-xs text-gray-500">
-              (Risk: {analysis.riskLevel || 'unknown'})
-            </span>
-          )}
-        </p>
+        
+        {analysis && (
+          <p className="text-xs text-gray-600 font-medium">
+            Risk Level: <span className={`${safety.color} font-bold`}>{analysis.riskLevel || 'unknown'}</span>
+          </p>
+        )}
       </div>
 
       {/* AI Insights */}
       {safeInsights.length > 0 && (
-        <div className="mb-6">
-          <h4 className="text-md font-semibold text-gray-800 mb-3 flex items-center">
-            <TrendingUp className="w-4 h-4 mr-2 text-success-600" />
+        <div className="bg-gradient-to-r from-emerald-50 to-teal-50 p-5 rounded-2xl border border-emerald-100">
+          <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <div className="bg-emerald-500 p-2 rounded-xl mr-3">
+              <TrendingUp className="w-5 h-5 text-white" />
+            </div>
             AI Safety Insights
           </h4>
-          <ul className="space-y-2">
-            {safeInsights.slice(0, 5).map((insight, index) => (
-              <li key={index} className="flex items-start text-sm text-gray-600">
-                <div className="w-2 h-2 bg-success-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                {typeof insight === 'string' ? insight : 'Analysis insight available'}
-              </li>
+          <div className="space-y-3">
+            {safeInsights.slice(0, 4).map((insight, index) => (
+              <div key={index} className="flex items-start bg-white/70 p-4 rounded-xl">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2 mr-4 flex-shrink-0"></div>
+                <p className="text-sm text-gray-700 font-medium leading-relaxed">
+                  {typeof insight === 'string' ? insight : 'Analysis insight available'}
+                </p>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
       {/* AI Recommendations */}
       {safeRecommendations.length > 0 && (
-        <div className="mb-6">
-          <h4 className="text-md font-semibold text-gray-800 mb-3 flex items-center">
-            <AlertTriangle className="w-4 h-4 mr-2 text-warning-600" />
+        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 p-5 rounded-2xl border border-blue-100">
+          <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <div className="bg-blue-500 p-2 rounded-xl mr-3">
+              <Target className="w-5 h-5 text-white" />
+            </div>
             AI Recommendations
           </h4>
-          <ul className="space-y-2">
-            {safeRecommendations.slice(0, 5).map((recommendation, index) => (
-              <li key={index} className="flex items-start text-sm text-gray-600">
-                <div className="w-2 h-2 bg-warning-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                {typeof recommendation === 'string' ? recommendation : 'Safety recommendation available'}
-              </li>
+          <div className="space-y-3">
+            {safeRecommendations.slice(0, 4).map((recommendation, index) => (
+              <div key={index} className="flex items-start bg-white/70 p-4 rounded-xl">
+                <div className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold mr-4 flex-shrink-0">
+                  {index + 1}
+                </div>
+                <p className="text-sm text-gray-700 font-medium leading-relaxed">
+                  {typeof recommendation === 'string' ? recommendation : 'Safety recommendation available'}
+                </p>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
       {/* Key Risks */}
       {safeKeyRisks.length > 0 && (
-        <div className="mb-6">
-          <h4 className="text-md font-semibold text-gray-800 mb-3 flex items-center">
-            <AlertTriangle className="w-4 h-4 mr-2 text-danger-600" />
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 p-5 rounded-2xl border border-amber-100">
+          <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+            <div className="bg-amber-500 p-2 rounded-xl mr-3">
+              <AlertTriangle className="w-5 h-5 text-white" />
+            </div>
             Key Risk Factors
           </h4>
-          <ul className="space-y-2">
-            {safeKeyRisks.slice(0, 5).map((risk, index) => (
-              <li key={index} className="flex items-start text-sm text-gray-600">
-                <div className="w-2 h-2 bg-danger-500 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                {typeof risk === 'string' ? risk : 'Risk factor identified'}
-              </li>
+          <div className="space-y-3">
+            {safeKeyRisks.slice(0, 4).map((risk, index) => (
+              <div key={index} className="flex items-start bg-white/70 p-4 rounded-xl">
+                <div className="w-2 h-2 bg-amber-500 rounded-full mt-2 mr-4 flex-shrink-0"></div>
+                <p className="text-sm text-gray-700 font-medium leading-relaxed">
+                  {typeof risk === 'string' ? risk : 'Risk factor identified'}
+                </p>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
       )}
 
       {/* Data Analysis Summary */}
-      <div className="bg-gray-50 p-4 rounded-lg">
-        <h4 className="text-md font-semibold text-gray-800 mb-3 flex items-center">
-          <Database className="w-4 h-4 mr-2 text-primary-600" />
-          Data Analysis
+      <div className="bg-gradient-to-r from-gray-50 to-slate-50 p-5 rounded-2xl border border-gray-200">
+        <h4 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+          <div className="bg-gray-600 p-2 rounded-xl mr-3">
+            <Database className="w-5 h-5 text-white" />
+          </div>
+          Analysis Summary
         </h4>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-gray-600">Total Crashes</span>
-            <p className="font-semibold text-gray-900">{analysis?.totalCrashes || 0}</p>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-white p-4 rounded-xl text-center">
+            <p className="text-2xl font-black text-gray-900">{analysis?.totalCrashes || 0}</p>
+            <span className="text-xs text-gray-600 font-semibold">Total Crashes</span>
           </div>
-          <div>
-            <span className="text-gray-600">Nearby Crashes</span>
-            <p className="font-semibold text-gray-900">{analysis?.nearbyCrashes || 0}</p>
+          <div className="bg-white p-4 rounded-xl text-center">
+            <p className="text-2xl font-black text-gray-900">{analysis?.nearbyCrashes || 0}</p>
+            <span className="text-xs text-gray-600 font-semibold">Nearby</span>
           </div>
-          <div>
-            <span className="text-gray-600">Similar Patterns</span>
-            <p className="font-semibold text-gray-900">{analysis?.similarCrashes || 0}</p>
+          <div className="bg-white p-4 rounded-xl text-center">
+            <p className="text-2xl font-black text-gray-900">{analysis?.similarCrashes || 0}</p>
+            <span className="text-xs text-gray-600 font-semibold">Similar Patterns</span>
           </div>
-          <div>
-            <span className="text-gray-600">Analysis Type</span>
-            <p className="font-semibold text-gray-900">Hybrid Geo+Vector</p>
+          <div className="bg-white p-4 rounded-xl text-center">
+            <p className="text-sm font-black text-gray-900">Hybrid</p>
+            <span className="text-xs text-gray-600 font-semibold">Analysis Type</span>
           </div>
         </div>
         
-        <div className="mt-3 pt-3 border-t border-gray-200">
-          <p className="text-xs text-gray-500 flex items-center">
-            <Cloud className="w-3 h-3 mr-1" />
-            Google Cloud + MongoDB Atlas + OpenAI
+        <div className="bg-white/70 p-4 rounded-xl">
+          <p className="text-xs text-gray-600 flex items-center justify-center font-medium">
+            <Cloud className="w-4 h-4 mr-2" />
+            Powered by Google Cloud + MongoDB Atlas + OpenAI
           </p>
         </div>
       </div>

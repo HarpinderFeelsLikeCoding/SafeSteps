@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import { Icon, LatLngTuple, LatLngBounds } from 'leaflet';
-import { Navigation, MapPin, AlertTriangle, Shield, Clock, Route, Database, Zap, Cloud, X, Menu, Search, Car, User, Bike, RefreshCw } from 'lucide-react';
+import { Navigation, MapPin, AlertTriangle, Shield, Clock, Route, Database, Zap, Cloud, X, Menu, Search, Car, User, Bike, RefreshCw, ChevronRight, Star, TrendingUp } from 'lucide-react';
 import SafetyPanel from './components/SafetyPanel';
 import { CrashData, RouteData } from './types';
 import { apiService } from './services/api';
@@ -37,7 +37,7 @@ function MapController({ routes, selectedRoute }: { routes: RouteData[], selecte
       if (allCoords.length > 0) {
         try {
           const bounds = new LatLngBounds(allCoords);
-          map.fitBounds(bounds, { padding: [50, 50] });
+          map.fitBounds(bounds, { padding: [80, 80] });
         } catch (error) {
           console.log('Error fitting bounds, using first coordinate');
           map.setView(allCoords[0], 13);
@@ -241,15 +241,15 @@ function App() {
   };
 
   const getRouteColor = (safetyScore: number) => {
-    if (safetyScore >= 80) return '#22c55e'; // Green
-    if (safetyScore >= 60) return '#f59e0b'; // Yellow
+    if (safetyScore >= 80) return '#10b981'; // Emerald
+    if (safetyScore >= 60) return '#f59e0b'; // Amber
     return '#ef4444'; // Red
   };
 
   const getSafetyIcon = (score: number) => {
-    if (score >= 80) return <Shield className="w-4 h-4 text-success-600" />;
-    if (score >= 60) return <AlertTriangle className="w-4 h-4 text-warning-600" />;
-    return <AlertTriangle className="w-4 h-4 text-danger-600" />;
+    if (score >= 80) return <Shield className="w-4 h-4 text-emerald-600" />;
+    if (score >= 60) return <AlertTriangle className="w-4 h-4 text-amber-600" />;
+    return <AlertTriangle className="w-4 h-4 text-red-600" />;
   };
 
   // Safe crash data rendering
@@ -273,7 +273,7 @@ function App() {
           <Popup>
             <div className="max-w-xs">
               <div className="flex items-center mb-2">
-                <AlertTriangle className="w-4 h-4 text-danger-600 mr-2" />
+                <AlertTriangle className="w-4 h-4 text-red-600 mr-2" />
                 <strong>Crash Report</strong>
               </div>
               <p><strong>Date:</strong> {crash.CRASH_DATE || crash.crash_date || 'Unknown'}</p>
@@ -286,7 +286,7 @@ function App() {
                 <p><strong>Injuries:</strong> {crash.NUMBER_OF_PERSONS_INJURED || crash.number_of_persons_injured}</p>
               )}
               {(crash.NUMBER_OF_PERSONS_KILLED || crash.number_of_persons_killed) > 0 && (
-                <p className="text-danger-600 font-semibold">
+                <p className="text-red-600 font-semibold">
                   <strong>Fatalities:</strong> {crash.NUMBER_OF_PERSONS_KILLED || crash.number_of_persons_killed}
                 </p>
               )}
@@ -298,9 +298,9 @@ function App() {
   };
 
   const travelModes = [
-    { id: 'driving', label: 'Driving', icon: Car },
-    { id: 'walking', label: 'Walking', icon: User },
-    { id: 'bicycling', label: 'Cycling', icon: Bike }
+    { id: 'driving', label: 'Drive', icon: Car },
+    { id: 'walking', label: 'Walk', icon: User },
+    { id: 'bicycling', label: 'Bike', icon: Bike }
   ];
 
   return (
@@ -332,8 +332,8 @@ function App() {
                 key={route.id}
                 positions={route.coordinates}
                 color={getRouteColor(route.safetyScore)}
-                weight={selectedRoute?.id === route.id ? 6 : 4}
-                opacity={selectedRoute?.id === route.id ? 1 : 0.6}
+                weight={selectedRoute?.id === route.id ? 8 : 6}
+                opacity={selectedRoute?.id === route.id ? 1 : 0.7}
               />
             );
           })}
@@ -343,108 +343,112 @@ function App() {
         </MapContainer>
       </div>
 
-      {/* Floating Header */}
-      <div className="absolute top-6 left-6 right-6 z-[1000] bg-white/95 backdrop-blur-sm shadow-xl rounded-2xl border border-gray-200">
-        <div className="flex items-center justify-between px-6 py-4">
-          <div className="flex items-center space-x-3">
-            <div className="bg-primary-500 p-2 rounded-lg">
-              <Navigation className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">SafeStep</h1>
-              <p className="text-xs text-gray-600">AI-Powered Route Safety</p>
-            </div>
-          </div>
-          
-          {/* API Status */}
-          <div className="hidden md:flex items-center space-x-4">
-            <div className="flex items-center space-x-1">
-              <Database className={`w-4 h-4 ${apiStatus?.mongodb === 'connected' ? 'text-success-600' : 'text-danger-600'}`} />
-              <span className="text-sm text-gray-600">DB</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Zap className={`w-4 h-4 ${apiStatus?.openai === 'configured' ? 'text-success-600' : 'text-danger-600'}`} />
-              <span className="text-sm text-gray-600">AI</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Cloud className={`w-4 h-4 ${apiStatus?.googleCloud === 'configured' ? 'text-success-600' : 'text-danger-600'}`} />
-              <span className="text-sm text-gray-600">Cloud</span>
-            </div>
-          </div>
-
-          {/* Search Button */}
-          <button
-            onClick={() => setShowSearchPanel(true)}
-            className="bg-primary-600 text-white px-4 py-2 rounded-xl hover:bg-primary-700 transition-colors flex items-center space-x-2 shadow-lg"
-          >
-            <Search className="w-5 h-5" />
-            <span className="font-medium">Plan Route</span>
-          </button>
-        </div>
-        
-        {/* Error Banner */}
-        {error && (
-          <div className="px-6 pb-4">
-            <div className="p-3 bg-warning-50 border border-warning-200 rounded-lg">
-              <div className="flex items-center">
-                <AlertTriangle className="w-4 h-4 text-warning-600 mr-2" />
-                <span className="text-sm text-warning-800">{error}</span>
+      {/* Apple-Style Floating Header */}
+      <div className="absolute top-6 left-6 right-6 z-[1000]">
+        <div className="bg-white/90 backdrop-blur-xl shadow-2xl rounded-3xl border border-white/20">
+          <div className="flex items-center justify-between px-8 py-5">
+            <div className="flex items-center space-x-4">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-3 rounded-2xl shadow-lg">
+                <Navigation className="w-7 h-7 text-white" />
               </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Search Panel Overlay */}
-      {showSearchPanel && (
-        <div className="absolute inset-0 z-[1100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-gradient-to-r from-primary-50 to-primary-100">
-              <div className="flex items-center space-x-3">
-                <div className="bg-primary-500 p-2 rounded-lg">
-                  <Search className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Plan Your Route</h2>
-                  <p className="text-sm text-gray-600">AI-powered safety analysis</p>
-                </div>
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">SafeStep</h1>
+                <p className="text-sm text-gray-600 font-medium">AI-Powered Route Safety</p>
               </div>
-              <button
-                onClick={() => setShowSearchPanel(false)}
-                className="p-2 hover:bg-white/50 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-gray-600" />
-              </button>
             </div>
             
-            <div className="p-6 space-y-6">
-              <div className="space-y-4">
+            {/* Status Indicators */}
+            <div className="hidden md:flex items-center space-x-6">
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${apiStatus?.mongodb === 'connected' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                <span className="text-sm font-medium text-gray-700">Database</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${apiStatus?.openai === 'configured' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                <span className="text-sm font-medium text-gray-700">AI</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${apiStatus?.googleCloud === 'configured' ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                <span className="text-sm font-medium text-gray-700">Cloud</span>
+              </div>
+            </div>
+
+            {/* Search Button */}
+            <button
+              onClick={() => setShowSearchPanel(true)}
+              className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-3 rounded-2xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 flex items-center space-x-3 shadow-lg hover:shadow-xl transform hover:scale-105 font-semibold"
+            >
+              <Search className="w-5 h-5" />
+              <span>Plan Route</span>
+            </button>
+          </div>
+          
+          {/* Error Banner */}
+          {error && (
+            <div className="px-8 pb-5">
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                <div className="flex items-center">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 mr-3" />
+                  <span className="text-sm text-amber-800 font-medium">{error}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Apple-Style Search Panel */}
+      {showSearchPanel && (
+        <div className="absolute inset-0 z-[1100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl max-w-md w-full border border-white/20 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-6 border-b border-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-3 rounded-2xl">
+                    <Search className="w-6 h-6 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">Plan Your Route</h2>
+                    <p className="text-sm text-gray-600 font-medium">AI-powered safety analysis</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSearchPanel(false)}
+                  className="p-2 hover:bg-white/50 rounded-xl transition-colors"
+                >
+                  <X className="w-6 h-6 text-gray-600" />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-8 space-y-6">
+              <div className="space-y-5">
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <div className="absolute left-4 top-4 w-3 h-3 bg-emerald-500 rounded-full"></div>
                   <input
                     type="text"
-                    placeholder="Enter starting location..."
+                    placeholder="From"
                     value={origin}
                     onChange={(e) => setOrigin(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-0 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-gray-900 font-medium placeholder-gray-500"
                   />
                 </div>
 
                 <div className="relative">
-                  <Navigation className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <div className="absolute left-4 top-4 w-3 h-3 bg-red-500 rounded-full"></div>
                   <input
                     type="text"
-                    placeholder="Enter destination..."
+                    placeholder="To"
                     value={destination}
                     onChange={(e) => setDestination(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+                    className="w-full pl-12 pr-4 py-4 bg-gray-50 border-0 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-gray-900 font-medium placeholder-gray-500"
                   />
                 </div>
 
                 {/* Travel Mode Selection */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">Travel Mode</label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <label className="block text-sm font-semibold text-gray-700 mb-4">Travel Mode</label>
+                  <div className="grid grid-cols-3 gap-3">
                     {travelModes.map((mode) => {
                       const IconComponent = mode.icon;
                       return (
@@ -452,14 +456,14 @@ function App() {
                           key={mode.id}
                           type="button"
                           onClick={() => setTravelMode(mode.id as any)}
-                          className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center space-y-2 ${
+                          className={`p-4 rounded-2xl transition-all flex flex-col items-center space-y-2 font-medium ${
                             travelMode === mode.id
-                              ? 'border-primary-500 bg-primary-50 text-primary-700 shadow-md'
-                              : 'border-gray-200 hover:border-gray-300 text-gray-600 hover:bg-gray-50'
+                              ? 'bg-blue-500 text-white shadow-lg transform scale-105'
+                              : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
                           }`}
                         >
-                          <IconComponent className="w-5 h-5" />
-                          <span className="text-xs font-medium">{mode.label}</span>
+                          <IconComponent className="w-6 h-6" />
+                          <span className="text-sm">{mode.label}</span>
                         </button>
                       );
                     })}
@@ -469,17 +473,17 @@ function App() {
                 <button
                   onClick={computeRoutes}
                   disabled={loading || !origin || !destination}
-                  className="w-full bg-gradient-to-r from-primary-600 to-primary-700 text-white py-4 px-4 rounded-xl hover:from-primary-700 hover:to-primary-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-5 px-6 rounded-2xl hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center space-x-3 shadow-lg hover:shadow-xl transform hover:scale-105 font-semibold text-lg"
                 >
                   {loading ? (
                     <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                      <span className="font-medium">Computing Routes...</span>
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                      <span>Finding Safe Routes...</span>
                     </>
                   ) : (
                     <>
-                      <Search className="w-5 h-5" />
-                      <span className="font-medium">Find Safe Routes</span>
+                      <Search className="w-6 h-6" />
+                      <span>Find Safe Routes</span>
                     </>
                   )}
                 </button>
@@ -489,23 +493,28 @@ function App() {
         </div>
       )}
 
-      {/* Route Selection Panel */}
+      {/* Apple-Style Route Selection Panel */}
       {showRoutePanel && routes.length > 0 && (
-        <div className="absolute top-24 left-6 z-[1100] bg-white/95 backdrop-blur-sm shadow-2xl rounded-2xl border border-gray-200 max-w-sm w-full">
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-primary-50 to-primary-100 rounded-t-2xl">
-            <div className="flex items-center space-x-2">
-              <Route className="w-5 h-5 text-primary-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Route Options</h3>
+        <div className="absolute top-32 left-6 z-[1100] bg-white/95 backdrop-blur-xl shadow-2xl rounded-3xl border border-white/20 max-w-sm w-full overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-5 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Route className="w-6 h-6 text-blue-600" />
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Route Options</h3>
+                  <p className="text-sm text-gray-600">{routes.length} routes found</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRoutePanel(false)}
+                className="p-2 hover:bg-white/50 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
             </div>
-            <button
-              onClick={() => setShowRoutePanel(false)}
-              className="p-1 hover:bg-white/50 rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4 text-gray-600" />
-            </button>
           </div>
           
-          <div className="p-4 space-y-3 max-h-96 overflow-y-auto">
+          <div className="p-6 space-y-4 max-h-96 overflow-y-auto">
             {routes.map((route, index) => {
               const safetyScore = route.safetyScore || 75;
               
@@ -513,61 +522,65 @@ function App() {
                 <div
                   key={route.id}
                   onClick={() => handleRouteSelect(route)}
-                  className={`p-4 rounded-xl border-2 cursor-pointer transition-all hover:shadow-lg transform hover:scale-[1.02] ${
+                  className={`p-5 rounded-2xl cursor-pointer transition-all duration-200 hover:shadow-lg transform hover:scale-[1.02] ${
                     selectedRoute?.id === route.id
-                      ? 'border-primary-500 bg-primary-50 shadow-md'
-                      : 'border-gray-200 bg-white hover:border-primary-300'
+                      ? 'bg-blue-50 border-2 border-blue-200 shadow-md'
+                      : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="px-2 py-1 text-xs font-medium bg-primary-100 text-primary-700 rounded-full">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-3">
+                      {index === 0 && (
+                        <div className="bg-emerald-500 text-white px-2 py-1 rounded-full text-xs font-bold">
+                          BEST
+                        </div>
+                      )}
+                      <span className="font-semibold text-gray-900">
                         {route.name}
                       </span>
-                      {index === 0 && (
-                        <span className="px-2 py-1 text-xs font-bold bg-success-100 text-success-700 rounded-full">
-                          RECOMMENDED
-                        </span>
-                      )}
                     </div>
-                    <div className={`px-2 py-1 text-sm font-bold rounded-full flex items-center space-x-1 ${
-                      safetyScore >= 80 ? 'text-success-600 bg-success-50' :
-                      safetyScore >= 60 ? 'text-warning-600 bg-warning-50' : 'text-danger-600 bg-danger-50'
+                    <div className={`px-3 py-1 text-sm font-bold rounded-full flex items-center space-x-1 ${
+                      safetyScore >= 80 ? 'text-emerald-700 bg-emerald-100' :
+                      safetyScore >= 60 ? 'text-amber-700 bg-amber-100' : 'text-red-700 bg-red-100'
                     }`}>
                       {getSafetyIcon(safetyScore)}
                       <span>{Math.round(safetyScore)}%</span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 mb-2 text-sm text-gray-600">
-                    <div className="flex items-center space-x-1">
+                  <div className="grid grid-cols-2 gap-4 mb-3 text-sm">
+                    <div className="flex items-center space-x-2 text-gray-600">
                       <Clock className="w-4 h-4" />
-                      <span>{route.duration?.text || 'Unknown'}</span>
+                      <span className="font-medium">{route.duration?.text || 'Unknown'}</span>
                     </div>
-                    <div>
-                      <span>{route.distance?.text || 'Unknown'}</span>
+                    <div className="text-gray-600 font-medium">
+                      {route.distance?.text || 'Unknown'}
                     </div>
                   </div>
                   
                   {route.summary && (
-                    <p className="text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
+                    <p className="text-xs text-gray-500 bg-white/70 p-3 rounded-xl font-medium">
                       Via {route.summary}
                     </p>
                   )}
+
+                  <div className="flex items-center justify-end mt-3">
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  </div>
                 </div>
               );
             })}
           </div>
 
-          {/* Travel Mode Switcher - Now positioned under route options */}
-          <div className="border-t border-gray-200 p-4 bg-gray-50/50 rounded-b-2xl">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-700">Switch Travel Mode</span>
+          {/* Travel Mode Switcher */}
+          <div className="border-t border-gray-100 p-6 bg-gray-50/50">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-sm font-semibold text-gray-700">Switch Travel Mode</span>
               {loading && (
-                <RefreshCw className="w-4 h-4 animate-spin text-primary-600" />
+                <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
               )}
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-3">
               {travelModes.map((mode) => {
                 const IconComponent = mode.icon;
                 return (
@@ -575,14 +588,14 @@ function App() {
                     key={mode.id}
                     onClick={() => handleTravelModeChange(mode.id as any)}
                     disabled={loading}
-                    className={`flex-1 p-3 rounded-xl transition-all flex flex-col items-center space-y-1 ${
+                    className={`flex-1 p-4 rounded-2xl transition-all flex flex-col items-center space-y-2 font-medium ${
                       travelMode === mode.id
-                        ? 'bg-primary-500 text-white shadow-lg'
+                        ? 'bg-blue-500 text-white shadow-lg'
                         : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
                     } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-105'}`}
                   >
-                    <IconComponent className="w-4 h-4" />
-                    <span className="text-xs font-medium">{mode.label}</span>
+                    <IconComponent className="w-5 h-5" />
+                    <span className="text-xs">{mode.label}</span>
                   </button>
                 );
               })}
@@ -591,23 +604,28 @@ function App() {
         </div>
       )}
 
-      {/* Safety Analysis Panel */}
+      {/* Apple-Style Safety Analysis Panel */}
       {showSafetyPanel && selectedRoute && (
-        <div className="absolute top-24 right-6 z-[1100] bg-white/95 backdrop-blur-sm shadow-2xl rounded-2xl border border-gray-200 max-w-md w-full max-h-[calc(100vh-8rem)]">
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-primary-50 to-primary-100 rounded-t-2xl">
-            <div className="flex items-center space-x-2">
-              <Shield className="w-5 h-5 text-primary-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Safety Analysis</h3>
+        <div className="absolute top-32 right-6 z-[1100] bg-white/95 backdrop-blur-xl shadow-2xl rounded-3xl border border-white/20 max-w-md w-full max-h-[calc(100vh-10rem)] overflow-hidden">
+          <div className="bg-gradient-to-r from-emerald-50 to-blue-50 px-6 py-5 border-b border-gray-100">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Shield className="w-6 h-6 text-emerald-600" />
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Safety Analysis</h3>
+                  <p className="text-sm text-gray-600">AI-powered insights</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSafetyPanel(false)}
+                className="p-2 hover:bg-white/50 rounded-xl transition-colors"
+              >
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
             </div>
-            <button
-              onClick={() => setShowSafetyPanel(false)}
-              className="p-1 hover:bg-white/50 rounded-lg transition-colors"
-            >
-              <X className="w-4 h-4 text-gray-600" />
-            </button>
           </div>
           
-          <div className="overflow-y-auto max-h-[calc(100vh-12rem)]">
+          <div className="overflow-y-auto max-h-[calc(100vh-16rem)]">
             <SafetyPanel
               route={selectedRoute}
               analysis={selectedRoute.detailedAnalysis}
@@ -616,25 +634,25 @@ function App() {
         </div>
       )}
 
-      {/* Floating Action Buttons */}
-      <div className="absolute bottom-6 right-6 z-[1000] flex flex-col space-y-3">
+      {/* Apple-Style Floating Action Buttons */}
+      <div className="absolute bottom-8 right-8 z-[1000] flex flex-col space-y-4">
         {selectedRoute && (
           <button
             onClick={() => setShowSafetyPanel(!showSafetyPanel)}
-            className="bg-white/95 backdrop-blur-sm p-3 rounded-full shadow-xl hover:shadow-2xl transition-all border border-gray-200 transform hover:scale-110"
+            className="bg-white/90 backdrop-blur-xl p-4 rounded-2xl shadow-2xl hover:shadow-3xl transition-all border border-white/20 transform hover:scale-110"
             title="Toggle Safety Analysis"
           >
-            <Shield className="w-6 h-6 text-primary-600" />
+            <Shield className="w-7 h-7 text-emerald-600" />
           </button>
         )}
         
         {routes.length > 0 && (
           <button
             onClick={() => setShowRoutePanel(!showRoutePanel)}
-            className="bg-white/95 backdrop-blur-sm p-3 rounded-full shadow-xl hover:shadow-2xl transition-all border border-gray-200 transform hover:scale-110"
+            className="bg-white/90 backdrop-blur-xl p-4 rounded-2xl shadow-2xl hover:shadow-2xl transition-all border border-white/20 transform hover:scale-110"
             title="Toggle Route Options"
           >
-            <Route className="w-6 h-6 text-primary-600" />
+            <Route className="w-7 h-7 text-blue-600" />
           </button>
         )}
       </div>
