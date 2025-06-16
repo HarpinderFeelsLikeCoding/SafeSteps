@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import { Icon, LatLngTuple, LatLngBounds } from 'leaflet';
-import { Navigation, MapPin, AlertTriangle, Shield, Clock, Route, Database, Zap, Cloud, X, Menu, Search, Car, User, Bike } from 'lucide-react';
+import { Navigation, MapPin, AlertTriangle, Shield, Clock, Route, Database, Zap, Cloud, X, Menu, Search, Car, User, Bike, RefreshCw } from 'lucide-react';
 import SafetyPanel from './components/SafetyPanel';
 import { CrashData, RouteData } from './types';
 import { apiService } from './services/api';
@@ -197,6 +197,49 @@ function App() {
     analyzeRoute(route);
   };
 
+  // New function to handle travel mode change and recompute routes
+  const handleTravelModeChange = async (newMode: 'driving' | 'walking' | 'bicycling') => {
+    setTravelMode(newMode);
+    
+    // If we have routes, recompute them with the new travel mode
+    if (routes.length > 0 && origin && destination) {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        console.log(`🔄 Switching to ${newMode} mode and recomputing routes...`);
+        const response = await apiService.computeRoutes(origin, destination, newMode);
+        
+        const processedRoutes = (response.routes || []).map((route: any, index: number) => ({
+          id: route.id || `route_${index}`,
+          name: route.name || (index === 0 ? 'Recommended Route' : `Alternative ${index}`),
+          summary: route.summary || 'Route via city streets',
+          distance: route.distance || { text: 'Unknown', value: 0 },
+          duration: route.duration || { text: 'Unknown', value: 0 },
+          coordinates: route.coordinates || [],
+          polyline: route.polyline || '',
+          crashes: route.crashes || [],
+          safetyScore: route.safetyScore || 75,
+          safetyAnalysis: route.safetyAnalysis,
+          type: index === 0 ? 'recommended' : 'alternative'
+        })) as RouteData[];
+
+        setRoutes(processedRoutes);
+        if (processedRoutes.length > 0) {
+          setSelectedRoute(processedRoutes[0]);
+          analyzeRoute(processedRoutes[0]);
+        }
+        
+        console.log(`✅ Routes updated for ${newMode} mode`);
+      } catch (error: any) {
+        console.error('❌ Error switching travel mode:', error);
+        setError(`Failed to switch to ${newMode} mode`);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   const getRouteColor = (safetyScore: number) => {
     if (safetyScore >= 80) return '#22c55e'; // Green
     if (safetyScore >= 60) return '#f59e0b'; // Yellow
@@ -351,6 +394,36 @@ function App() {
           </div>
         )}
       </div>
+
+      {/* Travel Mode Switcher - Shows after routes are computed */}
+      {routes.length > 0 && (
+        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 z-[1000] bg-white/95 backdrop-blur-sm shadow-xl rounded-2xl border border-gray-200 p-2">
+          <div className="flex items-center space-x-1">
+            {travelModes.map((mode) => {
+              const IconComponent = mode.icon;
+              return (
+                <button
+                  key={mode.id}
+                  onClick={() => handleTravelModeChange(mode.id as any)}
+                  disabled={loading}
+                  className={`p-3 rounded-xl transition-all flex flex-col items-center space-y-1 min-w-[80px] ${
+                    travelMode === mode.id
+                      ? 'bg-primary-500 text-white shadow-lg scale-105'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                  } ${loading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  {loading && travelMode === mode.id ? (
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <IconComponent className="w-5 h-5" />
+                  )}
+                  <span className="text-xs font-medium">{mode.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Search Panel Overlay */}
       {showSearchPanel && (
