@@ -5,17 +5,17 @@ env_variables:
   PORT: 8080
   
   # MongoDB Atlas Configuration
-  # Replace with your actual MongoDB connection string
+  # REPLACE THIS with your actual MongoDB connection string
   MONGODB_URI: "mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@YOUR_CLUSTER.mongodb.net/safestep?retryWrites=true&w=majority"
   DB_NAME: "NYC_Crashes"
   COLL_NAME: "NYC_Crash_Data"
   
   # OpenAI Configuration
-  # Replace with your actual OpenAI API key
+  # REPLACE THIS with your actual OpenAI API key
   OPENAI_API_KEY: "sk-your-actual-openai-api-key-here"
   
   # Google Cloud Configuration
-  # Replace with your actual Google Cloud API key
+  # REPLACE THIS with your actual Google Cloud API key
   GOOGLE_CLOUD_API_KEY: "your-actual-google-cloud-api-key-here"
 
 automatic_scaling:
