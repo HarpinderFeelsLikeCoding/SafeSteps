@@ -40,8 +40,6 @@ steps:
       - '--cpu-throttling'
       - '--execution-environment'
       - 'gen2'
-      - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080,MONGODB_URI=mongodb+srv://harpinder059:VblF558XAIQtoWgw@cluster0.sfo01tn.mongodb.net/safestep?retryWrites=true&w=majority,DB_NAME=NYC_Crashes,COLL_NAME=NYC_Crash_Data,OPENAI_API_KEY=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,GOOGLE_CLOUD_API_KEY=AIzaSyAUDcKCjhtyBAaecuPfeSIfCZfgrIBwPhw'
     timeout: '1800s'
 
 images:
@@ -52,3 +50,6 @@ options:
   machineType: 'E2_HIGHCPU_8'
 
 timeout: '3600s'
+
+# NOTE: Set environment variables in Cloud Run console:
+# MONGODB_URI, OPENAI_API_KEY, GOOGLE_CLOUD_API_KEY, etc.
