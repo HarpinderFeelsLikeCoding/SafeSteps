@@ -13,7 +13,7 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'safestep'
+      - 'safesteps'
       - '--image'
       - 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA'
       - '--region'
@@ -29,8 +29,12 @@ steps:
       - '2'
       - '--max-instances'
       - '10'
+      - '--timeout'
+      - '300'
+      - '--concurrency'
+      - '80'
       - '--set-env-vars'
-      - 'NODE_ENV=production,MONGODB_URI=mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@YOUR_CLUSTER.mongodb.net/safestep,OPENAI_API_KEY=sk-your-actual-key,GOOGLE_CLOUD_API_KEY=your-actual-key,DB_NAME=NYC_Crashes,COLL_NAME=NYC_Crash_Data'
+      - 'NODE_ENV=production,PORT=8080,MONGODB_URI=mongodb+srv://harpinder059:VblF558XAIQtoWgw@cluster0.sfo01tn.mongodb.net/safestep?retryWrites=true&w=majority,DB_NAME=NYC_Crashes,COLL_NAME=NYC_Crash_Data,OPENAI_API_KEY=sk-your-actual-openai-api-key,GOOGLE_CLOUD_API_KEY=your-actual-google-cloud-api-key'
 
 images:
   - 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA'

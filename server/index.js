@@ -16,12 +16,17 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+console.log('🚀 Starting SafeStep server...');
+console.log('📊 Environment:', process.env.NODE_ENV);
+console.log('🔌 Port:', PORT);
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
+  console.log('📁 Serving static files from:', path.join(__dirname, '../dist'));
   app.use(express.static(path.join(__dirname, '../dist')));
 }
 
@@ -36,6 +41,7 @@ const googleMapsClient = new Client({});
 // Connect to MongoDB Atlas - Updated for your database structure
 async function connectToMongoDB() {
   try {
+    console.log('🍃 Connecting to MongoDB Atlas...');
     const client = new MongoClient(process.env.MONGODB_URI);
     await client.connect();
     
@@ -612,15 +618,44 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Start server
-connectToMongoDB().then(() => {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 SafeStep server running on port ${PORT}`);
-    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-    console.log(`🗺️ Google Cloud integration: ${process.env.GOOGLE_CLOUD_API_KEY ? '✅' : '❌'}`);
-    console.log(`🧠 OpenAI integration: ${process.env.OPENAI_API_KEY ? '✅' : '❌'}`);
-    console.log(`🍃 MongoDB Atlas: ${process.env.MONGODB_URI ? '✅' : '❌'}`);
-  });
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully');
+  process.exit(0);
 });
+
+process.on('SIGINT', () => {
+  console.log('🛑 SIGINT received, shutting down gracefully');
+  process.exit(0);
+});
+
+// Start server
+async function startServer() {
+  try {
+    console.log('🔌 Connecting to services...');
+    await connectToMongoDB();
+    
+    const server = app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 SafeStep server running on port ${PORT}`);
+      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+      console.log(`🗺️ Google Cloud integration: ${process.env.GOOGLE_CLOUD_API_KEY ? '✅' : '❌'}`);
+      console.log(`🧠 OpenAI integration: ${process.env.OPENAI_API_KEY ? '✅' : '❌'}`);
+      console.log(`🍃 MongoDB Atlas: ${process.env.MONGODB_URI ? '✅' : '❌'}`);
+      console.log('✅ Server started successfully!');
+    });
+
+    // Handle server errors
+    server.on('error', (error) => {
+      console.error('❌ Server error:', error);
+      process.exit(1);
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 export default app;
