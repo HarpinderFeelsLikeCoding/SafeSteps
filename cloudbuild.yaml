@@ -30,9 +30,12 @@ steps:
       - '--max-instances'
       - '10'
       - '--timeout'
-      - '300'
+      - '900'
       - '--concurrency'
       - '80'
+      - '--cpu-boost'
+      - '--execution-environment'
+      - 'gen2'
       - '--set-env-vars'
       - 'NODE_ENV=production,PORT=8080,MONGODB_URI=mongodb+srv://harpinder059:VblF558XAIQtoWgw@cluster0.sfo01tn.mongodb.net/safestep?retryWrites=true&w=majority,DB_NAME=NYC_Crashes,COLL_NAME=NYC_Crash_Data,OPENAI_API_KEY=sk-your-actual-openai-api-key,GOOGLE_CLOUD_API_KEY=your-actual-google-cloud-api-key'
 
@@ -41,3 +44,4 @@ images:
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'

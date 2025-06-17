@@ -32,6 +32,7 @@ if (process.env.NODE_ENV === 'production') {
 
 // Initialize services
 let db;
+let mongoClient;
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -42,11 +43,15 @@ const googleMapsClient = new Client({});
 async function connectToMongoDB() {
   try {
     console.log('🍃 Connecting to MongoDB Atlas...');
-    const client = new MongoClient(process.env.MONGODB_URI);
-    await client.connect();
+    mongoClient = new MongoClient(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000, // 5 second timeout
+      connectTimeoutMS: 10000, // 10 second timeout
+    });
+    
+    await mongoClient.connect();
     
     // Use your actual database name from the screenshot
-    db = client.db(process.env.DB_NAME || 'NYC_Crashes');
+    db = mongoClient.db(process.env.DB_NAME || 'NYC_Crashes');
     console.log('✅ Connected to MongoDB Atlas');
     console.log(`📊 Database: ${process.env.DB_NAME || 'NYC_Crashes'}`);
     console.log(`📋 Collection: ${process.env.COLL_NAME || 'NYC_Crash_Data'}`);
@@ -55,6 +60,7 @@ async function connectToMongoDB() {
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
     // Don't exit - allow app to run with demo data
+    console.log('⚠️ Running in demo mode without database');
   }
 }
 
@@ -621,20 +627,26 @@ if (process.env.NODE_ENV === 'production') {
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received, shutting down gracefully');
+  if (mongoClient) {
+    mongoClient.close();
+  }
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
   console.log('🛑 SIGINT received, shutting down gracefully');
+  if (mongoClient) {
+    mongoClient.close();
+  }
   process.exit(0);
 });
 
 // Start server
 async function startServer() {
   try {
-    console.log('🔌 Connecting to services...');
-    await connectToMongoDB();
+    console.log('🔌 Starting server initialization...');
     
+    // Start server first, then connect to services
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 SafeStep server running on port ${PORT}`);
       console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
@@ -648,6 +660,12 @@ async function startServer() {
     server.on('error', (error) => {
       console.error('❌ Server error:', error);
       process.exit(1);
+    });
+
+    // Connect to MongoDB after server is running
+    console.log('🔌 Connecting to services in background...');
+    connectToMongoDB().catch(error => {
+      console.error('⚠️ MongoDB connection failed, continuing with demo mode:', error.message);
     });
 
   } catch (error) {
