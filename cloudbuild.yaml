@@ -1,12 +1,12 @@
 steps:
   # Build the container image with extended timeout
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA', '.']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/safestep:latest', '.']
     timeout: '1800s'
   
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA']
+    args: ['push', 'gcr.io/$PROJECT_ID/safestep:latest']
     timeout: '900s'
   
   # Deploy container image to Cloud Run
@@ -17,7 +17,7 @@ steps:
       - 'deploy'
       - 'safesteps'
       - '--image'
-      - 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA'
+      - 'gcr.io/$PROJECT_ID/safestep:latest'
       - '--region'
       - 'northamerica-northeast2'
       - '--platform'
@@ -41,11 +41,11 @@ steps:
       - '--execution-environment'
       - 'gen2'
       - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080'
+      - 'NODE_ENV=production,PORT=8080,MONGODB_URI=mongodb+srv://harpinder059:VblF558XAIQtoWgw@cluster0.sfo01tn.mongodb.net/safestep?retryWrites=true&w=majority,DB_NAME=NYC_Crashes,COLL_NAME=NYC_Crash_Data,OPENAI_API_KEY=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,GOOGLE_CLOUD_API_KEY=AIzaSyAUDcKCjhtyBAaecuPfeSIfCZfgrIBwPhw'
     timeout: '1800s'
 
 images:
-  - 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/safestep:latest'
 
 options:
   logging: CLOUD_LOGGING_ONLY
