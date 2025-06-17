@@ -30,7 +30,7 @@ steps:
       - '--max-instances'
       - '10'
       - '--set-env-vars'
-      - 'NODE_ENV=production,MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/safestep,OPENAI_API_KEY=sk-your-key,GOOGLE_CLOUD_API_KEY=your-key'
+      - 'NODE_ENV=production,MONGODB_URI=mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@YOUR_CLUSTER.mongodb.net/safestep,OPENAI_API_KEY=sk-your-actual-key,GOOGLE_CLOUD_API_KEY=your-actual-key,DB_NAME=NYC_Crashes,COLL_NAME=NYC_Crash_Data'
 
 images:
   - 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA'
