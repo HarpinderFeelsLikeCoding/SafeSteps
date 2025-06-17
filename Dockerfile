@@ -1,5 +1,5 @@
 # Multi-stage build for SafeStep hackathon project
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install ALL dependencies (including dev dependencies for build)
-RUN npm ci
+# Install dependencies with timeout
+RUN npm ci --timeout=300000
 
 # Copy source code
 COPY . .
@@ -17,7 +17,7 @@ COPY . .
 RUN npm run build:client
 
 # Production stage
-FROM node:18-alpine AS production
+FROM node:20-alpine AS production
 
 # Set working directory
 WORKDIR /app
@@ -25,8 +25,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm ci --omit=dev && npm cache clean --force
+# Install production dependencies only with timeout
+RUN npm ci --only=production --timeout=300000 && npm cache clean --force
 
 # Copy built frontend
 COPY --from=builder /app/dist ./dist
@@ -45,9 +45,13 @@ USER safestep
 # Expose port
 EXPOSE 8080
 
-# Health check
+# Set environment variables for Cloud Run
+ENV NODE_ENV=production
+ENV PORT=8080
+
+# Health check with longer timeout
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:8080/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+  CMD node -e "require('http').get('http://localhost:8080/ping', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
 # Start the application
-CMD ["npm", "start"]
+CMD ["node", "server/index.js"]

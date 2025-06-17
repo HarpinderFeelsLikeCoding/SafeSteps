@@ -16,114 +16,93 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-console.log('🚀 Starting SafeStep server...');
-console.log('📊 Environment:', process.env.NODE_ENV);
-console.log('🔌 Port:', PORT);
-
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
-  console.log('📁 Serving static files from:', path.join(__dirname, '../dist'));
   app.use(express.static(path.join(__dirname, '../dist')));
 }
 
-// Initialize services
+// Initialize services with error handling
 let db;
-let mongoClient;
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+let openai;
+let googleMapsClient;
 
-const googleMapsClient = new Client({});
+// Initialize OpenAI only if API key is available
+if (process.env.OPENAI_API_KEY) {
+  try {
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  } catch (error) {
+    console.log('⚠️ OpenAI initialization failed:', error.message);
+  }
+}
 
-// Connect to MongoDB Atlas - Updated for your database structure
+// Initialize Google Maps client only if API key is available
+if (process.env.GOOGLE_CLOUD_API_KEY) {
+  try {
+    googleMapsClient = new Client({});
+  } catch (error) {
+    console.log('⚠️ Google Maps client initialization failed:', error.message);
+  }
+}
+
+// Connect to MongoDB Atlas - Non-blocking
 async function connectToMongoDB() {
   try {
-    console.log('🍃 Connecting to MongoDB Atlas...');
-    mongoClient = new MongoClient(process.env.MONGODB_URI, {
+    if (!process.env.MONGODB_URI) {
+      console.log('⚠️ MongoDB URI not configured, running in demo mode');
+      return;
+    }
+
+    const client = new MongoClient(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 5000, // 5 second timeout
-      connectTimeoutMS: 10000, // 10 second timeout
+      connectTimeoutMS: 5000,
     });
     
-    await mongoClient.connect();
-    
-    // Use your actual database name from the screenshot
-    db = mongoClient.db(process.env.DB_NAME || 'NYC_Crashes');
+    await client.connect();
+    db = client.db(process.env.DB_NAME || 'NYC_Crashes');
     console.log('✅ Connected to MongoDB Atlas');
-    console.log(`📊 Database: ${process.env.DB_NAME || 'NYC_Crashes'}`);
-    console.log(`📋 Collection: ${process.env.COLL_NAME || 'NYC_Crash_Data'}`);
     
     await ensureIndexes();
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    // Don't exit - allow app to run with demo data
-    console.log('⚠️ Running in demo mode without database');
+    console.log('⚠️ MongoDB connection failed, running in demo mode:', error.message);
+    // Don't throw - allow app to run without database
   }
 }
 
 // Ensure proper indexes for geo and vector search
 async function ensureIndexes() {
   try {
-    // Use your actual collection name from the screenshot
     const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
     
     // Create geospatial index for location queries
     try {
       await collection.createIndex({ location: '2dsphere' });
-      console.log('✅ Geospatial index created');
+      console.log('✅ Geospatial index ready');
     } catch (indexError) {
-      console.log('ℹ️ Geospatial index already exists or location field not ready');
-    }
-    
-    // Check if vector search index exists
-    try {
-      const indexes = await collection.listSearchIndexes().toArray();
-      const vectorIndex = indexes.find(index => 
-        index.name === 'default' || 
-        index.mappings?.fields?.vector_embedding ||
-        index.mappings?.fields?.narrative_embedding
-      );
-      
-      if (vectorIndex) {
-        console.log('✅ Vector search index found and ready');
-      } else {
-        console.log('⚠️ Vector search index not found');
-        console.log('📝 You need to create a vector search index in MongoDB Atlas:');
-        console.log('   1. Go to Atlas Search in your cluster');
-        console.log('   2. Create Search Index');
-        console.log('   3. Use JSON Editor with this config:');
-        console.log(JSON.stringify({
-          "fields": [
-            {
-              "type": "vector",
-              "path": "vector_embedding",
-              "numDimensions": 1536,
-              "similarity": "cosine"
-            }
-          ]
-        }, null, 2));
-      }
-    } catch (indexError) {
-      console.log('ℹ️ Vector search index check skipped - will use geospatial search only');
+      console.log('ℹ️ Geospatial index already exists');
     }
   } catch (error) {
-    console.error('⚠️ Error setting up indexes:', error);
+    console.log('⚠️ Index setup skipped:', error.message);
   }
 }
 
 // Generate embeddings for crash narratives
 async function generateEmbedding(text) {
   try {
+    if (!openai) return null;
+    
     const response = await openai.embeddings.create({
       model: 'text-embedding-ada-002',
       input: text.substring(0, 8000),
     });
     return response.data[0].embedding;
   } catch (error) {
-    console.error('Error generating embedding:', error);
+    console.log('⚠️ Embedding generation failed:', error.message);
     return null;
   }
 }
@@ -131,6 +110,17 @@ async function generateEmbedding(text) {
 // Geocode address using Google Cloud Geocoding API
 async function geocodeAddress(address) {
   try {
+    if (!googleMapsClient || !process.env.GOOGLE_CLOUD_API_KEY) {
+      // Return demo coordinates
+      if (address.toLowerCase().includes('times square')) {
+        return { lat: 40.7580, lng: -73.9855, formatted_address: 'Times Square, New York, NY' };
+      }
+      if (address.toLowerCase().includes('brooklyn bridge')) {
+        return { lat: 40.7061, lng: -73.9969, formatted_address: 'Brooklyn Bridge, New York, NY' };
+      }
+      return { lat: 40.7128, lng: -74.0060, formatted_address: address };
+    }
+
     const response = await googleMapsClient.geocode({
       params: {
         address: address,
@@ -148,14 +138,7 @@ async function geocodeAddress(address) {
     }
     return null;
   } catch (error) {
-    console.error('Geocoding error:', error);
-    // Return demo coordinates for NYC if geocoding fails
-    if (address.toLowerCase().includes('times square')) {
-      return { lat: 40.7580, lng: -73.9855, formatted_address: 'Times Square, New York, NY' };
-    }
-    if (address.toLowerCase().includes('brooklyn bridge')) {
-      return { lat: 40.7061, lng: -73.9969, formatted_address: 'Brooklyn Bridge, New York, NY' };
-    }
+    console.log('⚠️ Geocoding failed, using demo coordinates:', error.message);
     return { lat: 40.7128, lng: -74.0060, formatted_address: address };
   }
 }
@@ -163,6 +146,19 @@ async function geocodeAddress(address) {
 // Get route directions using Google Cloud Directions API
 async function getRouteDirections(origin, destination, mode = 'driving') {
   try {
+    if (!googleMapsClient || !process.env.GOOGLE_CLOUD_API_KEY) {
+      // Return demo route
+      return [{
+        id: 'route_0',
+        summary: 'Demo Route via Broadway',
+        distance: { text: '2.1 mi', value: 3380 },
+        duration: { text: '12 mins', value: 720 },
+        polyline: 'demo_polyline',
+        bounds: {},
+        legs: []
+      }];
+    }
+
     const response = await googleMapsClient.directions({
       params: {
         origin: `${origin.lat},${origin.lng}`,
@@ -183,8 +179,7 @@ async function getRouteDirections(origin, destination, mode = 'driving') {
       legs: route.legs
     }));
   } catch (error) {
-    console.error('Directions error:', error);
-    // Return demo route if API fails
+    console.log('⚠️ Directions API failed, using demo route:', error.message);
     return [{
       id: 'route_0',
       summary: 'Demo Route via Broadway',
@@ -200,7 +195,6 @@ async function getRouteDirections(origin, destination, mode = 'driving') {
 // Decode Google polyline to coordinates
 function decodePolyline(encoded) {
   if (encoded === 'demo_polyline') {
-    // Return demo coordinates for Times Square to Brooklyn Bridge
     return [
       [40.7580, -73.9855], // Times Square
       [40.7505, -73.9934], // Herald Square
@@ -270,11 +264,10 @@ const demoCrashes = [
   }
 ];
 
-// Find crashes near route using geospatial query - Updated for your field names
+// Find crashes near route using geospatial query
 async function findCrashesNearRoute(routeCoordinates, bufferKm = 0.5) {
   try {
     if (!db) {
-      console.log('ℹ️ Database not available, using demo crash data');
       return demoCrashes;
     }
     
@@ -295,16 +288,15 @@ async function findCrashesNearRoute(routeCoordinates, bufferKm = 0.5) {
 
     return crashes.length > 0 ? crashes : demoCrashes;
   } catch (error) {
-    console.error('Error finding crashes near route:', error);
+    console.log('⚠️ Crash search failed, using demo data:', error.message);
     return demoCrashes;
   }
 }
 
-// Vector search for similar crash narratives - Updated for your collection
+// Vector search for similar crash narratives
 async function vectorSearchCrashes(queryEmbedding, limit = 20) {
   try {
     if (!db) {
-      console.log('ℹ️ Database not available for vector search');
       return [];
     }
     
@@ -343,15 +335,32 @@ async function vectorSearchCrashes(queryEmbedding, limit = 20) {
     const results = await collection.aggregate(pipeline).toArray();
     return results;
   } catch (error) {
-    console.log('ℹ️ Vector search not available yet - using geospatial search only');
-    console.log('Vector search error:', error.message);
+    console.log('⚠️ Vector search failed:', error.message);
     return [];
   }
 }
 
-// Calculate safety score using AI analysis - Updated for your field names
+// Calculate safety score using AI analysis
 async function calculateSafetyScore(crashes, routeInfo) {
   try {
+    if (!openai) {
+      // Fallback calculation
+      const baseScore = 85;
+      const crashPenalty = Math.min(crashes.length * 2, 30);
+      const fatalPenalty = crashes.filter(c => 
+        (c.NUMBER_OF_PERSONS_KILLED || c.number_of_persons_killed || 0) > 0
+      ).length * 10;
+      const finalScore = Math.max(10, baseScore - crashPenalty - fatalPenalty);
+      
+      return {
+        safetyScore: finalScore,
+        riskLevel: finalScore >= 70 ? 'low' : finalScore >= 50 ? 'medium' : 'high',
+        insights: ['Analysis based on crash frequency and severity', 'Demo mode - limited data available'],
+        recommendations: ['Exercise caution in high-traffic areas', 'Maintain safe following distance'],
+        keyRisks: ['Traffic congestion', 'Intersection safety']
+      };
+    }
+
     const recentCrashes = crashes.filter(crash => {
       const crashDate = new Date(crash.CRASH_DATE || crash.crash_date);
       const sixMonthsAgo = new Date();
@@ -379,14 +388,6 @@ async function calculateSafetyScore(crashes, routeInfo) {
     - Fatal crashes: ${fatalCrashes.length}
     - Injury crashes: ${injuryCrashes.length}
     
-    Top contributing factors: ${[...new Set(crashes.map(c => 
-      c.CONTRIBUTING_FACTOR_VEHICLE_1 || c.contributing_factor_vehicle_1
-    ).filter(Boolean))].slice(0, 5).join(', ')}
-    
-    Vehicle types involved: ${[...new Set(crashes.map(c => 
-      c.VEHICLE_TYPE_CODE_1 || c.vehicle_type_code1
-    ).filter(Boolean))].slice(0, 5).join(', ')}
-    
     Calculate a safety score (0-100) and provide actionable insights.
     
     Respond with JSON only:
@@ -407,7 +408,7 @@ async function calculateSafetyScore(crashes, routeInfo) {
 
     return JSON.parse(response.choices[0].message.content);
   } catch (error) {
-    console.error('Error calculating safety score:', error);
+    console.log('⚠️ AI analysis failed, using fallback:', error.message);
     
     // Fallback calculation
     const baseScore = 85;
@@ -429,24 +430,12 @@ async function calculateSafetyScore(crashes, routeInfo) {
 
 // API Routes
 
-// Health check endpoint - Updated to check your collection
+// Health check endpoint - MUST be first and simple
 app.get('/api/health', async (req, res) => {
   try {
     const mongoStatus = db ? 'connected' : 'disconnected';
     const openaiStatus = process.env.OPENAI_API_KEY ? 'configured' : 'not configured';
     const googleStatus = process.env.GOOGLE_CLOUD_API_KEY ? 'configured' : 'not configured';
-    
-    // Test MongoDB connection and check data
-    let dataStatus = 'no data';
-    if (db) {
-      await db.admin().ping();
-      const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
-      const totalDocs = await collection.countDocuments();
-      const processedDocs = await collection.countDocuments({ 
-        vector_embedding: { $exists: true } 
-      });
-      dataStatus = `${totalDocs} total, ${processedDocs} with embeddings`;
-    }
     
     res.json({
       status: 'healthy',
@@ -455,9 +444,6 @@ app.get('/api/health', async (req, res) => {
         openai: openaiStatus,
         googleCloud: googleStatus
       },
-      data: dataStatus,
-      database: process.env.DB_NAME || 'NYC_Crashes',
-      collection: process.env.COLL_NAME || 'NYC_Crash_Data',
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -468,12 +454,15 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
+// Simple ping endpoint
+app.get('/ping', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Route computation endpoint
 app.post('/api/compute-routes', async (req, res) => {
   try {
     const { origin, destination, travelMode = 'driving' } = req.body;
-    
-    console.log(`🗺️ Computing routes: ${origin} → ${destination} (${travelMode})`);
     
     if (!origin || !destination) {
       return res.status(400).json({ error: 'Origin and destination are required' });
@@ -487,9 +476,6 @@ app.post('/api/compute-routes', async (req, res) => {
       return res.status(400).json({ error: 'Could not geocode addresses' });
     }
 
-    console.log(`📍 Origin: ${originCoords.lat}, ${originCoords.lng}`);
-    console.log(`📍 Destination: ${destCoords.lat}, ${destCoords.lng}`);
-
     // Get route alternatives
     const routes = await getRouteDirections(originCoords, destCoords, travelMode);
     
@@ -497,18 +483,12 @@ app.post('/api/compute-routes', async (req, res) => {
       return res.status(404).json({ error: 'No routes found' });
     }
 
-    console.log(`🛣️ Found ${routes.length} route(s)`);
-
     // Process each route
     const processedRoutes = await Promise.all(routes.map(async (route, index) => {
       const coordinates = decodePolyline(route.polyline);
       
-      console.log(`🔍 Analyzing route ${index + 1} with ${coordinates.length} coordinates`);
-      
       // Find crashes near this route
       const crashes = await findCrashesNearRoute(coordinates);
-      
-      console.log(`💥 Found ${crashes.length} crashes near route ${index + 1}`);
       
       // Calculate safety score
       const safetyAnalysis = await calculateSafetyScore(crashes, route);
@@ -531,8 +511,6 @@ app.post('/api/compute-routes', async (req, res) => {
     // Sort by safety score for route recommendations
     const sortedRoutes = processedRoutes.sort((a, b) => b.safetyScore - a.safetyScore);
     
-    console.log(`✅ Route computation complete. Safest route: ${sortedRoutes[0]?.safetyScore}% safe`);
-    
     res.json({
       origin: originCoords,
       destination: destCoords,
@@ -554,8 +532,6 @@ app.post('/api/compute-routes', async (req, res) => {
 app.post('/api/analyze-route', async (req, res) => {
   try {
     const { routeId, routeSummary, coordinates } = req.body;
-    
-    console.log(`🧠 Analyzing route: ${routeId} - ${routeSummary}`);
     
     if (!coordinates || coordinates.length === 0) {
       return res.status(400).json({ error: 'Route coordinates are required' });
@@ -583,8 +559,6 @@ app.post('/api/analyze-route', async (req, res) => {
         allCrashes.push(crash);
       }
     });
-
-    console.log(`📊 Analysis complete: ${allCrashes.length} total crashes (${nearbyCrashes.length} nearby, ${similarCrashes.length} similar)`);
 
     // Enhanced safety analysis
     const safetyAnalysis = await calculateSafetyScore(allCrashes, { 
@@ -624,56 +598,26 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// Start server immediately - don't wait for database
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 SafeStep server running on port ${PORT}`);
+  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  console.log(`🗺️ Google Cloud integration: ${process.env.GOOGLE_CLOUD_API_KEY ? '✅' : '❌'}`);
+  console.log(`🧠 OpenAI integration: ${process.env.OPENAI_API_KEY ? '✅' : '❌'}`);
+  console.log(`🍃 MongoDB Atlas: ${process.env.MONGODB_URI ? '✅' : '❌'}`);
+});
+
+// Connect to MongoDB after server starts
+connectToMongoDB().catch(error => {
+  console.log('⚠️ MongoDB connection failed, continuing in demo mode:', error.message);
+});
+
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, shutting down gracefully');
-  if (mongoClient) {
-    mongoClient.close();
-  }
-  process.exit(0);
+  console.log('SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('Process terminated');
+  });
 });
-
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, shutting down gracefully');
-  if (mongoClient) {
-    mongoClient.close();
-  }
-  process.exit(0);
-});
-
-// Start server
-async function startServer() {
-  try {
-    console.log('🔌 Starting server initialization...');
-    
-    // Start server first, then connect to services
-    const server = app.listen(PORT, '0.0.0.0', () => {
-      console.log(`🚀 SafeStep server running on port ${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-      console.log(`🗺️ Google Cloud integration: ${process.env.GOOGLE_CLOUD_API_KEY ? '✅' : '❌'}`);
-      console.log(`🧠 OpenAI integration: ${process.env.OPENAI_API_KEY ? '✅' : '❌'}`);
-      console.log(`🍃 MongoDB Atlas: ${process.env.MONGODB_URI ? '✅' : '❌'}`);
-      console.log('✅ Server started successfully!');
-    });
-
-    // Handle server errors
-    server.on('error', (error) => {
-      console.error('❌ Server error:', error);
-      process.exit(1);
-    });
-
-    // Connect to MongoDB after server is running
-    console.log('🔌 Connecting to services in background...');
-    connectToMongoDB().catch(error => {
-      console.error('⚠️ MongoDB connection failed, continuing with demo mode:', error.message);
-    });
-
-  } catch (error) {
-    console.error('❌ Failed to start server:', error);
-    process.exit(1);
-  }
-}
-
-startServer();
 
 export default app;

@@ -2,10 +2,12 @@ steps:
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA', '.']
+    timeout: '1200s'
   
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA']
+    timeout: '600s'
   
   # Deploy container image to Cloud Run
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -17,7 +19,7 @@ steps:
       - '--image'
       - 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA'
       - '--region'
-      - 'us-central1'
+      - 'northamerica-northeast2'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -30,14 +32,12 @@ steps:
       - '--max-instances'
       - '10'
       - '--timeout'
-      - '900'
+      - '300'
       - '--concurrency'
       - '80'
-      - '--cpu-boost'
-      - '--execution-environment'
-      - 'gen2'
       - '--set-env-vars'
-      - 'NODE_ENV=production,PORT=8080,MONGODB_URI=mongodb+srv://harpinder059:VblF558XAIQtoWgw@cluster0.sfo01tn.mongodb.net/safestep?retryWrites=true&w=majority,DB_NAME=NYC_Crashes,COLL_NAME=NYC_Crash_Data,OPENAI_API_KEY=sk-your-actual-openai-api-key,GOOGLE_CLOUD_API_KEY=your-actual-google-cloud-api-key'
+      - 'NODE_ENV=production,PORT=8080,MONGODB_URI=mongodb+srv://harpinder059:VblF558XAIQtoWgw@cluster0.sfo01tn.mongodb.net/safestep?retryWrites=true&w=majority,DB_NAME=NYC_Crashes,COLL_NAME=NYC_Crash_Data,OPENAI_API_KEY=sk-your-actual-openai-api-key-here,GOOGLE_CLOUD_API_KEY=your-actual-google-cloud-api-key-here'
+    timeout: '1200s'
 
 images:
   - 'gcr.io/$PROJECT_ID/safestep:$COMMIT_SHA'
@@ -45,3 +45,5 @@ images:
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: 'E2_HIGHCPU_8'
+
+timeout: '3600s'
