@@ -7,8 +7,8 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies with timeout
-RUN npm ci --timeout=300000
+# Install dependencies with longer timeout
+RUN npm ci --timeout=600000
 
 # Copy source code
 COPY . .
@@ -19,14 +19,17 @@ RUN npm run build:client
 # Production stage
 FROM node:20-alpine AS production
 
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
 # Set working directory
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only with timeout
-RUN npm ci --only=production --timeout=300000 && npm cache clean --force
+# Install production dependencies only with longer timeout
+RUN npm ci --only=production --timeout=600000 && npm cache clean --force
 
 # Copy built frontend
 COPY --from=builder /app/dist ./dist
@@ -49,9 +52,9 @@ EXPOSE 8080
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Health check with longer timeout
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:8080/ping', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+# Health check with proper timeout
+HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:8080/api/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
 
-# Start the application
-CMD ["node", "server/index.js"]
+# Start the application with dumb-init for proper signal handling
+CMD ["dumb-init", "node", "server/index.js"]

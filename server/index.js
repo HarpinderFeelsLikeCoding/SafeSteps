@@ -16,9 +16,21 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Middleware
-app.use(cors());
+// Enhanced CORS configuration for Cloud Run
+app.use(cors({
+  origin: true, // Allow all origins for Cloud Run
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
 app.use(express.json({ limit: '10mb' }));
+
+// Add request logging for debugging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
@@ -61,8 +73,11 @@ async function connectToMongoDB() {
     }
 
     const client = new MongoClient(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000, // 5 second timeout
-      connectTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000, // 10 second timeout
+      connectTimeoutMS: 10000,
+      maxPoolSize: 10,
+      retryWrites: true,
+      w: 'majority'
     });
     
     await client.connect();
@@ -460,11 +475,13 @@ app.get('/api/health', async (req, res) => {
       environment: {
         dbName: process.env.DB_NAME || 'safestep',
         collectionName: process.env.COLL_NAME || 'crashes',
-        nodeEnv: process.env.NODE_ENV || 'development'
+        nodeEnv: process.env.NODE_ENV || 'development',
+        port: process.env.PORT || 8080
       },
       timestamp: new Date().toISOString()
     });
   } catch (error) {
+    console.error('Health check error:', error);
     res.status(500).json({
       status: 'unhealthy',
       error: error.message
@@ -472,9 +489,22 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-// Simple ping endpoint
+// Simple ping endpoint for load balancer
 app.get('/ping', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Root endpoint for testing
+app.get('/', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+  } else {
+    res.json({ 
+      message: 'SafeStep API Server', 
+      status: 'running',
+      endpoints: ['/api/health', '/api/compute-routes', '/api/analyze-route']
+    });
+  }
 });
 
 // Route computation endpoint
@@ -485,6 +515,8 @@ app.post('/api/compute-routes', async (req, res) => {
     if (!origin || !destination) {
       return res.status(400).json({ error: 'Origin and destination are required' });
     }
+
+    console.log(`🚀 Computing route: ${origin} → ${destination} (${travelMode})`);
 
     // Geocode addresses
     const originCoords = await geocodeAddress(origin);
@@ -555,6 +587,8 @@ app.post('/api/analyze-route', async (req, res) => {
       return res.status(400).json({ error: 'Route coordinates are required' });
     }
 
+    console.log(`🧠 Analyzing route: ${routeId}`);
+
     // Generate embedding for route summary
     const routeNarrative = `Route through ${routeSummary || 'city streets'} with ${coordinates.length} waypoints`;
     const routeEmbedding = await generateEmbedding(routeNarrative);
@@ -609,12 +643,21 @@ app.post('/api/analyze-route', async (req, res) => {
   }
 });
 
-// Serve React app in production
+// Catch-all handler for React app in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
   });
 }
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+  });
+});
 
 // Start server immediately - don't wait for database
 const server = app.listen(PORT, '0.0.0.0', () => {
@@ -623,6 +666,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🗺️ Google Cloud integration: ${process.env.GOOGLE_CLOUD_API_KEY ? '✅' : '❌'}`);
   console.log(`🧠 OpenAI integration: ${process.env.OPENAI_API_KEY ? '✅' : '❌'}`);
   console.log(`🍃 MongoDB Atlas: ${process.env.MONGODB_URI ? '✅' : '❌'}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // Connect to MongoDB after server starts
@@ -630,12 +674,31 @@ connectToMongoDB().catch(error => {
   console.log('⚠️ MongoDB connection failed, continuing in demo mode:', error.message);
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+// Graceful shutdown handlers
+const gracefulShutdown = (signal) => {
+  console.log(`${signal} received, shutting down gracefully`);
   server.close(() => {
-    console.log('Process terminated');
+    console.log('HTTP server closed');
+    if (db) {
+      db.client.close();
+      console.log('MongoDB connection closed');
+    }
+    process.exit(0);
   });
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });
 
 export default app;
