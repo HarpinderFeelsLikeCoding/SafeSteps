@@ -36,6 +36,7 @@ if (process.env.OPENAI_API_KEY) {
     openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
+    console.log('✅ OpenAI client initialized');
   } catch (error) {
     console.log('⚠️ OpenAI initialization failed:', error.message);
   }
@@ -45,6 +46,7 @@ if (process.env.OPENAI_API_KEY) {
 if (process.env.GOOGLE_CLOUD_API_KEY) {
   try {
     googleMapsClient = new Client({});
+    console.log('✅ Google Maps client initialized');
   } catch (error) {
     console.log('⚠️ Google Maps client initialization failed:', error.message);
   }
@@ -64,8 +66,13 @@ async function connectToMongoDB() {
     });
     
     await client.connect();
-    db = client.db(process.env.DB_NAME || 'NYC_Crashes');
+    
+    // Use environment variables with fallbacks
+    const dbName = process.env.DB_NAME || 'safestep';
+    db = client.db(dbName);
+    
     console.log('✅ Connected to MongoDB Atlas');
+    console.log(`📊 Database: ${dbName}`);
     
     await ensureIndexes();
   } catch (error) {
@@ -77,7 +84,11 @@ async function connectToMongoDB() {
 // Ensure proper indexes for geo and vector search
 async function ensureIndexes() {
   try {
-    const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
+    // Use environment variable with fallback
+    const collectionName = process.env.COLL_NAME || 'crashes';
+    const collection = db.collection(collectionName);
+    
+    console.log(`📋 Collection: ${collectionName}`);
     
     // Create geospatial index for location queries
     try {
@@ -271,7 +282,8 @@ async function findCrashesNearRoute(routeCoordinates, bufferKm = 0.5) {
       return demoCrashes;
     }
     
-    const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
+    const collectionName = process.env.COLL_NAME || 'crashes';
+    const collection = db.collection(collectionName);
     
     // Create a buffer around the route
     const lineString = turf.lineString(routeCoordinates.map(coord => [coord[1], coord[0]]));
@@ -300,7 +312,8 @@ async function vectorSearchCrashes(queryEmbedding, limit = 20) {
       return [];
     }
     
-    const collection = db.collection(process.env.COLL_NAME || 'NYC_Crash_Data');
+    const collectionName = process.env.COLL_NAME || 'crashes';
+    const collection = db.collection(collectionName);
     
     const pipeline = [
       {
@@ -443,6 +456,11 @@ app.get('/api/health', async (req, res) => {
         mongodb: mongoStatus,
         openai: openaiStatus,
         googleCloud: googleStatus
+      },
+      environment: {
+        dbName: process.env.DB_NAME || 'safestep',
+        collectionName: process.env.COLL_NAME || 'crashes',
+        nodeEnv: process.env.NODE_ENV || 'development'
       },
       timestamp: new Date().toISOString()
     });
