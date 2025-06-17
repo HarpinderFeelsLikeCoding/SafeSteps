@@ -5,8 +5,8 @@ env_variables:
   PORT: 8080
   
   # MongoDB Atlas Configuration
-  # REPLACE THIS with your actual MongoDB connection string
-  MONGODB_URI: "mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@YOUR_CLUSTER.mongodb.net/safestep?retryWrites=true&w=majority"
+  # Updated with your actual MongoDB connection string including database name
+  MONGODB_URI: "mongodb+srv://harpinder059:VblF558XAIQtoWgw@cluster0.sfo01tn.mongodb.net/safestep?retryWrites=true&w=majority"
   DB_NAME: "NYC_Crashes"
   COLL_NAME: "NYC_Crash_Data"
   
